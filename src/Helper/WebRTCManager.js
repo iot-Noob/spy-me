@@ -1,5 +1,6 @@
 export default class WebRTCManager {
   constructor(config = {}) {
+    this._lastRemoteStream = null;
     this.config = config.iceServers
       ? config
       : {
@@ -19,6 +20,8 @@ export default class WebRTCManager {
     this.peer = null;
     this.dataChannel = null;
     this.eventHandlers = {};
+    this.iceCandidates = [];
+    this.dcs = false;
   }
 
   on(event, handler) {
@@ -31,147 +34,130 @@ export default class WebRTCManager {
     }
   }
 
-  createPeer() {
-    try {
-      this.peer = new RTCPeerConnection(this.config);
+  setRemoteStreamCallback(callback) {
+    this.on("track", callback);
+  }
 
-      this.peer.onicecandidate = (e) => {
-        if (e.candidate) this.emit("ice-candidate", e.candidate);
-      };
+  getRemoteStream() {
+    return this._lastRemoteStream;
+  }
 
-      this.peer.ontrack = (e) => {
-        this.emit("track", e.streams[0]);
-      };
+  createPeer(ac = false) {
+    if (this.peer) return; // already created
+    this.peer = new RTCPeerConnection(this.config);
 
-      this.peer.ondatachannel = (e) => {
-        this.dataChannel = e.channel;
-        this._setupDataChannel(true);
-      };
+    this.peer.onicecandidate = (e) => {
+      if (e.candidate) this.iceCandidates.push(e.candidate);
+      this.emit("ice-candidate", e.candidate);
+    };
 
-      this.peer.onconnectionstatechange = () => {
-        this.emit("connection-state", this.peer.connectionState);
-        if (
-          this.peer.connectionState === "disconnected" ||
-          this.peer.connectionState === "failed"
-        ) {
-          this.emit("disconnected");
-        }
-      };
+    this.peer.ontrack = (e) => {
+      this._lastRemoteStream = e.streams[0];
+      this.emit("track", e.streams[0]);
+    };
 
-      this.emit("peer-created", this.peer);
-    } catch (err) {
-      console.error("Failed to create peer connection:", err);
-      throw err; // re-throw to let caller handle it
-    }
+    this.peer.ondatachannel = (e) => {
+      this.dataChannel = e.channel;
+      this._setupDataChannel(true);
+    };
+
+    this.peer.onconnectionstatechange = () => {
+      this.emit("connection-state", this.peer.connectionState);
+      if (
+        this.peer.connectionState === "disconnected" ||
+        this.peer.connectionState === "failed"
+      ) {
+        this.emit("disconnected");
+      }
+    };
+
+    if (ac) this.createDataChannel("hbt");
+
+    this.emit("peer-created", this.peer);
   }
 
   createDataChannel(label = "data") {
     if (!this.peer) throw new Error("Peer not created yet.");
-    try {
-      this.dataChannel = this.peer.createDataChannel(label);
-      this._setupDataChannel(false);
-      return this.dataChannel;
-    } catch (err) {
-      console.error("Failed to create data channel:", err);
-      throw err;
-    }
+    this.dataChannel = this.peer.createDataChannel(label);
+    this._setupDataChannel(false);
+    return this.dataChannel;
   }
 
   _setupDataChannel(isReceiver) {
     if (!this.dataChannel) return;
-
-    this.dataChannel.onopen = () => this.emit("data-open", isReceiver);
-    this.dataChannel.onclose = () => this.emit("data-close", isReceiver);
-    this.dataChannel.onerror = (err) =>
-      this.emit("data-error", err, isReceiver);
-    this.dataChannel.onmessage = (e) =>
-      this.emit("data-message", e.data, isReceiver);
+    this.dataChannel.onopen = () => {
+      this.dcs = true;
+      this.emit("data-open", isReceiver);
+    };
+    this.dataChannel.onclose = () => {
+      this.dcs = false;
+      this.emit("data-close", isReceiver);
+    };
+    this.dataChannel.onerror = (err) => this.emit("data-error", err, isReceiver);
+    this.dataChannel.onmessage = (e) => this.emit("data-message", e.data, isReceiver);
   }
 
   addStream(stream) {
     if (!this.peer) throw new Error("Peer not created yet.");
-    try {
-      stream.getTracks().forEach((track) => this.peer.addTrack(track, stream));
-    } catch (err) {
-      console.error("Failed to add stream tracks:", err);
-      throw err;
-    }
+    stream.getTracks().forEach((track) => this.peer.addTrack(track, stream));
   }
 
-  async createOffer(description = null) {
-    try {
-      if (!this.peer) this.createPeer();
+  async createOffer(ice_data = []) {
+    this.createPeer(true);
+    const offer = await this.peer.createOffer();
+    await this.peer.setLocalDescription(offer);
 
-      if (description) {
-        // Use the passed SDP description as local description
-        await this.peer.setLocalDescription(
-          new RTCSessionDescription(description)
-        );
-        return description; // Return the passed description
-      } else {
-        // Create a new offer if no description passed
-        const offer = await this.peer.createOffer();
-        await this.peer.setLocalDescription(offer);
-        return offer;
+    // add remote ICE candidates if provided
+    for (const ice of ice_data) {
+      if (ice?.candidate && ice.sdpMid != null && ice.sdpMLineIndex != null) {
+        await this.peer.addIceCandidate(new RTCIceCandidate(ice));
       }
-    } catch (err) {
-      console.error("Failed to create or set offer:", err);
-      throw err;
     }
+
+    await this.waitForIceGatheringComplete(); // NEW: wait for all ICE candidates
+    return offer;
   }
 
-  combined_offer = async (desc) => {
-    try {
-      if (!this.peer) {
-        this.createPeer();
-      }
-      return await this.createOffer(desc);
-    } catch (err) {
-      throw new Error(`Error combine offer due to ${err}`);
-    }
-  };
+  async createAnswer(remoteOffer, ice_data = []) {
+    this.createPeer();
+    await this.peer.setRemoteDescription(new RTCSessionDescription(remoteOffer));
 
-  async createAnswer(remoteOffer) {
-    try {
-      if (!this.peer) this.createPeer();
-      await this.peer.setRemoteDescription(
-        new RTCSessionDescription(remoteOffer)
-      );
-      const answer = await this.peer.createAnswer();
-      await this.peer.setLocalDescription(answer);
-      return answer;
-    } catch (err) {
-      console.error("Failed to create answer:", err);
-      throw err;
+    for (const ice of ice_data) {
+      if (ice?.candidate && ice.sdpMid != null && ice.sdpMLineIndex != null) {
+        await this.peer.addIceCandidate(new RTCIceCandidate(ice));
+      }
     }
+
+    const answer = await this.peer.createAnswer();
+    await this.peer.setLocalDescription(answer);
+    await this.waitForIceGatheringComplete();
+    return answer;
+  }
+
+  async waitForIceGatheringComplete() {
+    if (!this.peer) throw new Error("Peer not created yet.");
+    if (this.peer.iceGatheringState === "complete") return;
+    return new Promise((resolve) => {
+      const check = () => {
+        if (this.peer.iceGatheringState === "complete") resolve();
+        else setTimeout(check, 50);
+      };
+      check();
+    });
   }
 
   async setRemoteDescription(desc) {
-    try {
-      await this.peer.setRemoteDescription(new RTCSessionDescription(desc));
-    } catch (err) {
-      console.error("Failed to set remote description:", err);
-      throw err;
-    }
+    await this.peer.setRemoteDescription(new RTCSessionDescription(desc));
   }
 
   async addIceCandidate(candidate) {
-    try {
-      await this.peer.addIceCandidate(new RTCIceCandidate(candidate));
-    } catch (err) {
-      console.error("Error adding ICE candidate:", err);
-      throw err;
-    }
+    await this.peer.addIceCandidate(new RTCIceCandidate(candidate));
   }
 
   send(data) {
-    if (this.dataChannel && this.dataChannel.readyState === "open") {
-      this.dataChannel.send(data);
-    } else {
-      const warnMsg = "Data channel not open";
-      console.warn(warnMsg);
-      throw new Error(warnMsg);
-    }
+    if (!this.dataChannel || this.dataChannel.readyState !== "open")
+      throw new Error("Data channel not open");
+    this.dataChannel.send(data);
   }
 
   getStatus() {
@@ -183,15 +169,16 @@ export default class WebRTCManager {
   }
 
   close() {
-    try {
-      if (this.dataChannel) this.dataChannel.close();
-      if (this.peer) this.peer.close();
-    } catch (err) {
-      console.error("Error closing connection:", err);
-    } finally {
+    if (this.dataChannel) this.dataChannel.close();
+    if (this.peer) this.peer.close();
+    this.peer = null;
+    this.dataChannel = null;
+    this.emit("closed");
+  }
+    destroy() {
+    if (this.peer) {
+      this.peer.close();
       this.peer = null;
-      this.dataChannel = null;
-      this.emit("closed");
     }
   }
 }

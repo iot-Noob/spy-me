@@ -8,6 +8,8 @@ export default defineConfig({
    server: {
     host: true,   // listen on all addresses, e.g., 0.0.0.0
     port: 1920,   // custom port (default is 5173)
+        allowedHosts: ['rtc.nuketerm.mlt', 'localhost', '127.0.0.1'],
+
   },
 },
 )

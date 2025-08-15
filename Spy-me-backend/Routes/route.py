@@ -27,6 +27,7 @@ async def register_sdp(data: SDPRegisterRequest):
             "sdp": data.sdp,
             "status": "disconnected",
             "last_heartbeat": time.time(),
+            "ice":data.ice
         }
         return JSONResponse(content={"message": "SDP and ICE candidates registered successfully", "client_id": data.client_id})
     except HTTPException:
@@ -43,6 +44,7 @@ async def register_answer(data: SDPAnswerRequest):
         raise HTTPException(status_code=404, detail="Client not found. Register offer first.")
     
     client["answer_sdp"] = data.answer_sdp
+    client["answer_ice"]=data.ice
     client["last_heartbeat"] = time.time()
     client["status"] = "disconnected"
 
@@ -64,7 +66,7 @@ async def update_sdp(data: SDPUpdateRequest):
     client = spy_clients.get(data.client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-
+    client["ice"]=data.ice
     client["sdp"] = data.sdp
     client["last_heartbeat"] = time.time()
     # client["status"] = "disconnected"
@@ -76,7 +78,7 @@ async def update_answer(data: SDPAnswerUpdateRequest):
     client = spy_clients.get(data.client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-
+    client["answer_ice"]=data.ice
     client["answer_sdp"] = data.answer_sdp
     client["last_heartbeat"] = time.time()
     # client["status"] = "disconnected"

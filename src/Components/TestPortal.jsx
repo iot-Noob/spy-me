@@ -15,15 +15,17 @@ const TestPortal = ({ showModal, onClose, data, onUpdate }) => {
       setOfferSDP(data.sdp || "");
       setAnswerSDP(data.answer_sdp || "");
     }
-  }, [data]);
+  }, [data.sdp]);
 
-  const handleUpdateClick = () => {
-    if (onUpdate && typeof onUpdate === "function") {
-      // Pass back the edited offer and answer SDP
-      onUpdate();
-    }
-  };
-
+const handleUpdateClick = () => {
+  if (onUpdate && typeof onUpdate === "function") {
+    onUpdate({
+      offerSDP,
+      answerSDP
+    });
+  }
+};
+  
   return createPortal(
     <div className={`modal ${showModal ? "modal-open" : ""}`}>
       <div className="modal-box relative max-w-lg">
@@ -41,7 +43,6 @@ const TestPortal = ({ showModal, onClose, data, onUpdate }) => {
         <div className="mb-4">
           <label className="font-semibold mb-1 block">Offer SDP:</label>
           <textarea
-          readOnly
             className="w-full h-48 p-2 border rounded resize-none"
             value={offerSDP}
             onChange={(e) => setOfferSDP(e.target.value)}
@@ -51,7 +52,6 @@ const TestPortal = ({ showModal, onClose, data, onUpdate }) => {
         <div className="mb-4">
           <label className="font-semibold mb-1 block">Answer SDP:</label>
           <textarea
-          readOnly
             className="w-full h-48 p-2 border rounded resize-none"
             value={answerSDP}
             onChange={(e) => setAnswerSDP(e.target.value)}
@@ -59,7 +59,9 @@ const TestPortal = ({ showModal, onClose, data, onUpdate }) => {
         </div>
 
         <button
-          onClick={handleUpdateClick}
+          onClick={()=>{
+            handleUpdateClick()
+          }}
           className="btn btn-primary w-full"
           disabled={!offerSDP && !answerSDP}
         >
