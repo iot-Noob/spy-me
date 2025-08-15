@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from "react";
 
-const CustModal = ({ children,dialogRef }) => {
-    
+const CustModal = ({ children, dialogRef }) => {
   return (
     <dialog ref={dialogRef} className="modal p-0">
       <div className="modal-box relative p-6">

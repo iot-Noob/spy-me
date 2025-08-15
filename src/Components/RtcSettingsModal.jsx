@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { toast } from "react-toastify";
 import { IoIosCloseCircle } from "react-icons/io";
-
-const RtcSettingsModal = ({ dialogRef, onAddSettings }) => {
+import { registerSDP } from "../Helper/Requests";
+const RtcSettingsModal = ({ dialogRef }) => {
   const [userId, setUserId] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
@@ -13,7 +13,7 @@ const RtcSettingsModal = ({ dialogRef, onAddSettings }) => {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setSubmitted(true);
     const trimmedId = userId.trim();
 
@@ -22,10 +22,26 @@ const RtcSettingsModal = ({ dialogRef, onAddSettings }) => {
       return;
     }
 
-    onAddSettings(trimmedId);
-    dialogRef.current?.close();
-    setUserId("");
-    setSubmitted(false);
+    try {
+      const res = await registerSDP({
+        client_id: trimmedId,
+        sdp: "",
+        ice: [],
+      });
+
+      if (res?.status === 200) {
+        toast.success("User registered successfully");
+        dialogRef.current?.close();
+        setUserId("");
+      }
+    } catch (err) {
+      toast.error(
+        `Error occurred while registering user: ${err.message || err}`
+      );
+    } finally {
+      handleClose();
+      setUserId("");
+    }
   };
 
   const handleClose = () => {
@@ -33,12 +49,7 @@ const RtcSettingsModal = ({ dialogRef, onAddSettings }) => {
   };
 
   return (
-    <dialog
-      ref={dialogRef}
-      className="modal"
-      aria-modal="true"
-      role="dialog"
-    >
+    <dialog ref={dialogRef} className="modal" aria-modal="true" role="dialog">
       <form method="dialog" className="modal-box max-w-sm relative">
         {/* Close button in top-right */}
         <button

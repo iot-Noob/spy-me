@@ -7,8 +7,11 @@ import { ImPhoneHangUp } from "react-icons/im";
 import { IoCallOutline } from "react-icons/io5";
 import RtcSettingsModal from "../Components/RtcSettingsModal";
 import { getClients } from "../Helper/Requests";
+import CustModal from "../Components/CustModal";
+
 const AdminPanel = () => {
   const [clients, setClients] = useState([]);
+  let rtcSettingsModalToggler = useRef(false);
 
   let fetch_clients = async () => {
     //fetch clients from api and show them on table
@@ -29,7 +32,13 @@ const AdminPanel = () => {
       <div className="p-4">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Client Management</h2>
-          <button className="btn btn-circle btn-primary" title="Add Client">
+          <button
+            className="btn btn-circle btn-primary"
+            title="Add Client"
+            onClick={() => {
+              rtcSettingsModalToggler.current.showModal();
+            }}
+          >
             <IoIosAddCircle size={28} />
           </button>
         </div>
@@ -107,6 +116,8 @@ const AdminPanel = () => {
           </tbody>
         </table>
       </div>
+
+      <RtcSettingsModal dialogRef={rtcSettingsModalToggler} />
     </>
   );
 };
