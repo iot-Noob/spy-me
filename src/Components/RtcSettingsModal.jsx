@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { toast } from "react-toastify";
 import { IoIosCloseCircle } from "react-icons/io";
 import { registerSDP } from "../Helper/Requests";
-const RtcSettingsModal = ({ dialogRef }) => {
+const RtcSettingsModal = ({ dialogRef ,rfrsh}) => {
   const [userId, setUserId] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
@@ -39,6 +39,7 @@ const RtcSettingsModal = ({ dialogRef }) => {
         `Error occurred while registering user: ${err.message || err}`
       );
     } finally {
+      rfrsh()
       handleClose();
       setUserId("");
     }

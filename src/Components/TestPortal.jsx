@@ -2,33 +2,38 @@ import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { IoMdCloseCircleOutline } from "react-icons/io";
 
-const TestPortal = ({ showModal, onClose, data, onUpdate }) => {
+const TestPortal = ({ showModal, onClose, data }) => {
   const portalRoot = document.getElementById("modal-root");
   if (!portalRoot) return null;
 
-  // Local states for editable SDPs
   const [offerSDP, setOfferSDP] = useState("");
   const [answerSDP, setAnswerSDP] = useState("");
- 
+  const [offerICE, setOfferICE] = useState([]);
+  const [answerICE, setAnswerICE] = useState([]);
+
   useEffect(() => {
     if (data) {
       setOfferSDP(data.sdp || "");
       setAnswerSDP(data.answer_sdp || "");
+      setOfferICE(data.ice || []);
+      setAnswerICE(data.answer_ice || []);
     }
-  }, [data.sdp]);
+  }, [data]);
 
-const handleUpdateClick = () => {
-  if (onUpdate && typeof onUpdate === "function") {
-    onUpdate({
-      offerSDP,
-      answerSDP
-    });
-  }
-};
-  
+  const renderIceList = (iceArray) => {
+    if (!iceArray || iceArray.length === 0) {
+      return <p className="text-gray-400 italic">No ICE candidates</p>;
+    }
+    return (
+      <pre className="bg-gray-100 p-2 rounded overflow-x-auto text-sm max-h-32">
+        {iceArray.map((ice, idx) => `${idx + 1}. ${ice}`).join("\n")}
+      </pre>
+    );
+  };
+
   return createPortal(
     <div className={`modal ${showModal ? "modal-open" : ""}`}>
-      <div className="modal-box relative max-w-lg">
+      <div className="modal-box relative max-w-2xl">
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -38,35 +43,31 @@ const handleUpdateClick = () => {
           <IoMdCloseCircleOutline size={28} />
         </button>
 
-        <h3 className="font-bold text-lg mb-4">Edit Client</h3>
+        <h3 className="font-bold text-lg mb-4">View Client SDP & ICE</h3>
 
-        <div className="mb-4">
+        {/* Offer Section */}
+        <div className="mb-6">
           <label className="font-semibold mb-1 block">Offer SDP:</label>
           <textarea
-            className="w-full h-48 p-2 border rounded resize-none"
+            className="w-full h-32 p-2 border rounded resize-none text-sm"
             value={offerSDP}
-            onChange={(e) => setOfferSDP(e.target.value)}
+            readOnly
           />
+          <label className="font-semibold mt-2 block">Offer ICE Candidates:</label>
+          {renderIceList(offerICE)}
         </div>
 
-        <div className="mb-4">
+        {/* Answer Section */}
+        <div>
           <label className="font-semibold mb-1 block">Answer SDP:</label>
           <textarea
-            className="w-full h-48 p-2 border rounded resize-none"
+            className="w-full h-32 p-2 border rounded resize-none text-sm"
             value={answerSDP}
-            onChange={(e) => setAnswerSDP(e.target.value)}
+            readOnly
           />
+          <label className="font-semibold mt-2 block">Answer ICE Candidates:</label>
+          {renderIceList(answerICE)}
         </div>
-
-        <button
-          onClick={()=>{
-            handleUpdateClick()
-          }}
-          className="btn btn-primary w-full"
-          disabled={!offerSDP && !answerSDP}
-        >
-          Update SDP
-        </button>
       </div>
     </div>,
     portalRoot

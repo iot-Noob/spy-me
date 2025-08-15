@@ -1,3 +1,7 @@
+/*
+-----------------------Imports start-----------------------
+*/
+
 import React, { useEffect, useRef, useState } from "react";
 import { MdEdit } from "react-icons/md";
 import { AiFillDelete } from "react-icons/ai";
@@ -6,13 +10,31 @@ import { RxUpdate } from "react-icons/rx";
 import { ImPhoneHangUp } from "react-icons/im";
 import { IoCallOutline } from "react-icons/io5";
 import RtcSettingsModal from "../Components/RtcSettingsModal";
-import { getClients } from "../Helper/Requests";
+import { getClients, deleteClient } from "../Helper/Requests";
 import CustModal from "../Components/CustModal";
-
+import ActionModal from "../Components/ActionModal";
+import { toast } from "react-toastify";
+import { FaRegEye } from "react-icons/fa";
+import TestPortal from "../Components/TestPortal";
+/*
+-----------------------Imports end-----------------------
+*/
 const AdminPanel = () => {
+  /*
+-----------------------State manager start----------------------
+*/
   const [clients, setClients] = useState([]);
   let rtcSettingsModalToggler = useRef(false);
+  const [refresh, setRefresh] = useState(false);
+  let [showDelModal, setShowDelModal] = useState(false);
+  let [selectedUserId, setSelectUserId] = useState("");
+  let [selectedUserData, setSelectedUserData] = useState([]);
+  let [showViewDataModal, setShowViewModal] = useState(false);
+  /*
+-----------------------State manager End----------------------
+*/
 
+  // -----------------------Business logic start----------------------
   let fetch_clients = async () => {
     //fetch clients from api and show them on table
     let clientList = await getClients(); // { client_ids: [...] }
@@ -23,10 +45,51 @@ const AdminPanel = () => {
     setClients(temp);
   };
 
+  let refresh_client = () => {
+    setRefresh((prev) => !prev);
+  };
+
   useEffect(() => {
     fetch_clients();
-  }, []);
+  }, [refresh]);
 
+  //-----------------------Handle delete users function logic-----------------
+  let select_delete_users = (id) => {
+    if (!id) {
+      toast.warn("ID missing!!");
+      return;
+    }
+
+    setSelectUserId(id);
+    setShowDelModal(true);
+  };
+  // --------------------end------------------------------
+
+  //------------actual delete logic----------------
+
+  let delete_user = async () => {
+    try {
+      let dr = await deleteClient(selectedUserId);
+
+      if (dr.status === 200) {
+        toast.success(`Deleted user "${selectedUserId}" successfully`);
+        // Optional: refresh the list
+        refresh_client();
+      }
+    } catch (err) {
+      toast.error(`Error deleting user ${selectedUserId} due to \n\n ${err}`);
+    } finally {
+      refresh_client();
+      setShowDelModal(false);
+      setSelectUserId("");
+    }
+  };
+
+  //------------actual delete logic end----------------
+
+  // -----------------------Business logic End----------------------
+
+  //-----------------------Main Code Start----------------------
   return (
     <>
       <div className="p-4">
@@ -85,13 +148,30 @@ const AdminPanel = () => {
                       <div className="flex items-center gap-1">
                         <button
                           className="btn btn-circle btn-xs btn-info"
-                          title="Edit Client"
+                          title="View  Client"
+                          onClick={async () => {
+                            setSelectUserId(id);
+
+                            try {
+                              // Fetch latest client data before showing modal
+                              const latestClient = await getClients(id);
+                              const latestDetails = latestClient[id];
+                              setSelectedUserData(latestDetails);
+                              setShowViewModal(true);
+                            } catch (err) {
+                              toast.error(`Failed to load client data: ${err}`);
+                            }
+                          }}
                         >
-                          <MdEdit size={16} />
+                          <FaRegEye size={16} />
                         </button>
                         <button
                           className="btn btn-circle btn-xs btn-error"
                           title="Delete Client"
+                          onClick={() => {
+                            select_delete_users(id);
+                            setSelectedUserData(details);
+                          }}
                         >
                           <AiFillDelete size={16} />
                         </button>
@@ -116,10 +196,32 @@ const AdminPanel = () => {
           </tbody>
         </table>
       </div>
-
-      <RtcSettingsModal dialogRef={rtcSettingsModalToggler} />
+      <ActionModal
+        onConfirm={() => {
+          delete_user();
+        }}
+        showModal={showDelModal}
+        onClose={() => {
+          setShowDelModal(false);
+        }}
+        message={"Are you sure you want to delete this user"}
+        title={`Delete user ${selectedUserId}`}
+      />
+      <RtcSettingsModal
+        dialogRef={rtcSettingsModalToggler}
+        rfrsh={refresh_client}
+      />
+      <TestPortal
+        key={refresh}
+        showModal={showViewDataModal}
+        data={selectedUserData}
+        onClose={() => {
+          setShowViewModal(false);
+          setSelectedUserData([]);
+        }}
+      />
     </>
   );
 };
-
+//-----------------------Main Code End---------------------
 export default AdminPanel;
