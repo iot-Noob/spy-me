@@ -2,7 +2,7 @@
 -----------------------Imports start-----------------------
 */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { MdEdit } from "react-icons/md";
 import { AiFillDelete } from "react-icons/ai";
 import { IoIosAddCircle } from "react-icons/io";
@@ -16,12 +16,13 @@ import ActionModal from "../Components/ActionModal";
 import { toast } from "react-toastify";
 import { FaRegEye } from "react-icons/fa";
 import TestPortal from "../Components/TestPortal";
+import WebRTCManager from "../Helper/WebRTCManager";
 /*
------------------------Imports end-----------------------
+----------------Imports end----------------
 */
 const AdminPanel = () => {
   /*
------------------------State manager start----------------------
+----------------State manager start----------------
 */
   const [clients, setClients] = useState([]);
   let rtcSettingsModalToggler = useRef(false);
@@ -30,11 +31,16 @@ const AdminPanel = () => {
   let [selectedUserId, setSelectUserId] = useState("");
   let [selectedUserData, setSelectedUserData] = useState([]);
   let [showViewDataModal, setShowViewModal] = useState(false);
+  let peerRef = useRef({});
+  let [localIceCand, setLocalIceCand] = useState({});
+  let [updatingUsers, setUpdatingUsers] = useState({});
+  let [userSDP, setUserSDP] = useState({});
+ 
   /*
------------------------State manager End----------------------
+----------------State manager End----------------
 */
 
-  // -----------------------Business logic start----------------------
+  //----------------Business logic start----------------
   let fetch_clients = async () => {
     //fetch clients from api and show them on table
     let clientList = await getClients(); // { client_ids: [...] }
@@ -53,7 +59,7 @@ const AdminPanel = () => {
     fetch_clients();
   }, [refresh]);
 
-  //-----------------------Handle delete users function logic-----------------
+  //----------------Handle delete users function logic----------------
   let select_delete_users = (id) => {
     if (!id) {
       toast.warn("ID missing!!");
@@ -63,9 +69,9 @@ const AdminPanel = () => {
     setSelectUserId(id);
     setShowDelModal(true);
   };
-  // --------------------end------------------------------
+  //----------------end----------------
 
-  //------------actual delete logic----------------
+  //----------------actual delete logic----------------
 
   let delete_user = async () => {
     try {
@@ -85,11 +91,70 @@ const AdminPanel = () => {
     }
   };
 
-  //------------actual delete logic end----------------
+  //----------------actual delete logic end----------------
 
-  // -----------------------Business logic End----------------------
+  //----------------Init WEBRTC start----------------
 
-  //-----------------------Main Code Start----------------------
+  const createPeerForUser = (userId) => {
+  if (peerRef.current[userId]) {
+    // if old peer exists, clean it first
+    console.log(`Cleaning old peer for ${userId}...`);
+    peerRef.current[userId].close();
+    peerRef.current[userId].destroy?.();
+  }
+
+  const newPeer = new WebRTCManager();
+  newPeer.createPeer(true);
+  peerRef.current[userId] = newPeer;
+};
+
+// cleanup all peers on unmount
+useEffect(() => {
+  return () => {
+    Object.keys(peerRef.current).forEach((uid) => {
+      console.log(`Disconnecting peer for ${uid}...`);
+      peerRef.current[uid].close();
+      peerRef.current[uid].destroy?.();
+    });
+    peerRef.current = {}; // clear reference
+    console.log("All peers cleaned up!");
+  };
+}, []);
+
+  // ------------INIT webrtc END----------------
+
+  // ------------Update Logic start----------------
+
+let update_data = async () => {
+  if (!peerRef.current[selectedUserId]) {
+    createPeerForUser(selectedUserId)
+  }
+
+  setUpdatingUsers((prev) => ({ ...prev, [selectedUserId]: true }));
+  try {
+    const offer = await peerRef.current[selectedUserId].createOffer();
+    const iceCandidates = peerRef.current[selectedUserId].iceCandidates;
+
+    if (offer && iceCandidates.length > 0) {
+      setLocalIceCand((prev) => ({
+        ...prev,
+        [selectedUserId]: iceCandidates,
+      }));
+      setUserSDP((prev) => ({ ...prev, [selectedUserId]: offer.sdp }));
+    }
+  } catch (err) {
+    toast.error(`Error update due to ${err}`);
+  } finally {
+    setUpdatingUsers((prev) => ({ ...prev, [selectedUserId]: false }));
+  }
+};
+
+
+  // ------------Update Logic End----------------
+
+  //----------------Business logic End----------------
+
+  //----------------Main Code Start----------------
   return (
     <>
       <div className="p-4">
@@ -176,6 +241,11 @@ const AdminPanel = () => {
                           <AiFillDelete size={16} />
                         </button>
                         <button
+                          disabled={updatingUsers[id]}
+                          onClick={async () => {
+                            setSelectUserId(id);
+                            await update_data();
+                          }}
                           className="btn btn-circle btn-xs btn-primary"
                           title="Update SDP"
                         >
