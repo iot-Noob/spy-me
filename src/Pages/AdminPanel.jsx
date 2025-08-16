@@ -10,13 +10,14 @@ import { RxUpdate } from "react-icons/rx";
 import { ImPhoneHangUp } from "react-icons/im";
 import { IoCallOutline } from "react-icons/io5";
 import RtcSettingsModal from "../Components/RtcSettingsModal";
-import { getClients, deleteClient } from "../Helper/Requests";
+import { getClients, deleteClient,registerSDP,heartbeat,updateSDP } from "../Helper/Requests";
 import CustModal from "../Components/CustModal";
 import ActionModal from "../Components/ActionModal";
 import { toast } from "react-toastify";
 import { FaRegEye } from "react-icons/fa";
 import TestPortal from "../Components/TestPortal";
 import WebRTCManager from "../Helper/WebRTCManager";
+import { MdDownload } from "react-icons/md";
 /*
 ----------------Imports end----------------
 */
@@ -35,12 +36,68 @@ const AdminPanel = () => {
   let [localIceCand, setLocalIceCand] = useState({});
   let [updatingUsers, setUpdatingUsers] = useState({});
   let [userSDP, setUserSDP] = useState({});
- 
+
   /*
 ----------------State manager End----------------
 */
 
   //----------------Business logic start----------------
+
+  //----------------Peer Handler start----------------
+
+  const createPeerForUser = (userId) => {
+    if (peerRef.current[userId]) {
+      // if old peer exists, clean it first
+      console.log(`Cleaning old peer for ${userId}...`);
+      peerRef.current[userId].close();
+      peerRef.current[userId].destroy?.();
+    }
+
+    const newPeer = new WebRTCManager();
+    newPeer.createPeer(true);
+    peerRef.current[userId] = newPeer;
+  };
+
+  const deletePeerForUser = (id) => {
+    if (peerRef.current[id]) {
+      try {
+        peerRef.current[id].close();
+        peerRef.current[id].destroy?.();
+        delete peerRef.current[id]; // remove reference
+        console.log("Deleted peer object for", id);
+        toast.success(`Peer for ${id} destroyed successfully.`);
+        return true;
+      } catch (err) {
+        console.error(`Failed to destroy peer for ${id}:`, err);
+        toast.error(`Failed to destroy peer for ${id}`);
+        return false;
+      }
+    } else {
+      console.warn(`Peer does not exist for ${id}`);
+      toast.error(`Peer does not exist for ${id}`);
+      return false;
+    }
+  };
+  const showPeerForUser = () => {
+    try {
+      const peers = peerRef.current;
+      const ids = Object.keys(peers);
+
+      if (ids.length === 0) {
+        console.log("No peers currently exist.");
+        return;
+      }
+
+      console.log("Current peers:");
+      ids.forEach((id) => {
+        console.log(`User ID: ${id}`, peers[id]);
+      });
+    } catch (err) {
+      console.error("Error showing peers due to", err);
+    }
+  };
+  //----------------Peer Handler End----------------
+
   let fetch_clients = async () => {
     //fetch clients from api and show them on table
     let clientList = await getClients(); // { client_ids: [...] }
@@ -75,11 +132,18 @@ const AdminPanel = () => {
 
   let delete_user = async () => {
     try {
+      if (peerRef.current[selectedUserId]) {
+        console.log(
+          "delete peer for ",
+          selectedUserId,
+          peerRef.current[selectedUserId]
+        );
+      }
       let dr = await deleteClient(selectedUserId);
 
       if (dr.status === 200) {
         toast.success(`Deleted user "${selectedUserId}" successfully`);
-        // Optional: refresh the list
+
         refresh_client();
       }
     } catch (err) {
@@ -95,60 +159,51 @@ const AdminPanel = () => {
 
   //----------------Init WEBRTC start----------------
 
-  const createPeerForUser = (userId) => {
-  if (peerRef.current[userId]) {
-    // if old peer exists, clean it first
-    console.log(`Cleaning old peer for ${userId}...`);
-    peerRef.current[userId].close();
-    peerRef.current[userId].destroy?.();
-  }
-
-  const newPeer = new WebRTCManager();
-  newPeer.createPeer(true);
-  peerRef.current[userId] = newPeer;
-};
-
-// cleanup all peers on unmount
-useEffect(() => {
-  return () => {
-    Object.keys(peerRef.current).forEach((uid) => {
-      console.log(`Disconnecting peer for ${uid}...`);
-      peerRef.current[uid].close();
-      peerRef.current[uid].destroy?.();
-    });
-    peerRef.current = {}; // clear reference
-    console.log("All peers cleaned up!");
-  };
-}, []);
+  // cleanup all peers on unmount
+  useEffect(() => {
+    return () => {
+      Object.keys(peerRef.current).forEach((uid) => {
+        console.log(`Disconnecting peer for ${uid}...`);
+        peerRef.current[uid].close();
+        peerRef.current[uid].destroy?.();
+      });
+      peerRef.current = {}; // clear reference
+      console.log("All peers cleaned up!");
+    };
+  }, []);
 
   // ------------INIT webrtc END----------------
 
   // ------------Update Logic start----------------
 
-let update_data = async () => {
-  if (!peerRef.current[selectedUserId]) {
-    createPeerForUser(selectedUserId)
-  }
-
-  setUpdatingUsers((prev) => ({ ...prev, [selectedUserId]: true }));
-  try {
-    const offer = await peerRef.current[selectedUserId].createOffer();
-    const iceCandidates = peerRef.current[selectedUserId].iceCandidates;
-
-    if (offer && iceCandidates.length > 0) {
-      setLocalIceCand((prev) => ({
-        ...prev,
-        [selectedUserId]: iceCandidates,
-      }));
-      setUserSDP((prev) => ({ ...prev, [selectedUserId]: offer.sdp }));
+  let update_data = async () => {
+    if (!peerRef.current[selectedUserId]) {
+      createPeerForUser(selectedUserId);
+      showPeerForUser();
     }
-  } catch (err) {
-    toast.error(`Error update due to ${err}`);
-  } finally {
-    setUpdatingUsers((prev) => ({ ...prev, [selectedUserId]: false }));
-  }
-};
 
+    setUpdatingUsers((prev) => ({ ...prev, [selectedUserId]: true }));
+    try {
+      console.log(
+        "updating user wiht active peer:::",
+        peerRef.current[selectedUserId]
+      );
+      const offer = await peerRef.current[selectedUserId].createOffer();
+      const iceCandidates = peerRef.current[selectedUserId].iceCandidates;
+
+      if (offer && iceCandidates.length > 0) {
+        setLocalIceCand((prev) => ({
+          ...prev,
+          [selectedUserId]: iceCandidates,
+        }));
+        setUserSDP((prev) => ({ ...prev, [selectedUserId]: offer.sdp }));
+      }
+    } catch (err) {
+      toast.error(`Error update due to ${err}`);
+    } finally {
+      setUpdatingUsers((prev) => ({ ...prev, [selectedUserId]: false }));
+    }
+  };
 
   // ------------Update Logic End----------------
 
@@ -231,14 +286,25 @@ let update_data = async () => {
                           <FaRegEye size={16} />
                         </button>
                         <button
-                          className="btn btn-circle btn-xs btn-error"
+                          disabled={updatingUsers[id]}
+                          className={`btn btn-circle btn-xs ${
+                            peerRef.current[id] ? "btn-primary" : "btn-error"
+                          }`}
                           title="Delete Client"
                           onClick={() => {
-                            select_delete_users(id);
-                            setSelectedUserData(details);
+                            if (peerRef.current[id]) {
+                              deletePeerForUser(id);
+                            } else {
+                              select_delete_users(id);
+                              setSelectedUserData(details);
+                            }
                           }}
                         >
-                          <AiFillDelete size={16} />
+                          {peerRef.current[id] ? (
+                            <MdDownload size={16} />
+                          ) : (
+                            <AiFillDelete size={16} />
+                          )}
                         </button>
                         <button
                           disabled={updatingUsers[id]}
@@ -252,6 +318,7 @@ let update_data = async () => {
                           <RxUpdate size={16} />
                         </button>
                         <button
+                          disabled={!peerRef.current[id] || updatingUsers[id]}
                           className="btn btn-circle btn-xs btn-primary"
                           title="Call Client"
                         >
