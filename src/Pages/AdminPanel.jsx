@@ -10,7 +10,13 @@ import { RxUpdate } from "react-icons/rx";
 import { ImPhoneHangUp } from "react-icons/im";
 import { IoCallOutline } from "react-icons/io5";
 import RtcSettingsModal from "../Components/RtcSettingsModal";
-import { getClients, deleteClient,registerSDP,heartbeat,updateSDP } from "../Helper/Requests";
+import {
+  getClients,
+  deleteClient,
+  registerSDP,
+  heartbeat,
+  updateSDP,
+} from "../Helper/Requests";
 import CustModal from "../Components/CustModal";
 import ActionModal from "../Components/ActionModal";
 import { toast } from "react-toastify";
@@ -30,7 +36,7 @@ const AdminPanel = () => {
   const [refresh, setRefresh] = useState(false);
   let [showDelModal, setShowDelModal] = useState(false);
   let [selectedUserId, setSelectUserId] = useState("");
-  let [selectedUserData, setSelectedUserData] = useState([]);
+  let [selectedUserData, setSelectedUserData] = useState({});
   let [showViewDataModal, setShowViewModal] = useState(false);
   let peerRef = useRef({});
   let [localIceCand, setLocalIceCand] = useState({});
@@ -197,6 +203,42 @@ const AdminPanel = () => {
           [selectedUserId]: iceCandidates,
         }));
         setUserSDP((prev) => ({ ...prev, [selectedUserId]: offer.sdp }));
+        let icd = localIceCand[selectedUserId];
+        let sdp = userSDP[selectedUserId];
+        console.log("ice candidate:::", icd);
+        console.log("SDP:::", sdp);
+        console.log("update existing signal data");
+        if(selectedUserId){
+                    try {
+            let rnd = await updateSDP({
+              client_id: selectedUserId,
+              sdp: offer.sdp,
+              ice: iceCandidates,
+            }).catch((reason) =>
+              toast.error(`Error add data to db due to\n\n${reason}`)
+            );
+            if (rnd.status === 200) {
+           
+              let hb = await heartbeat({
+                client_id: selectedUserId,
+                status: "disconnected",
+              });
+              if (hb.status === 200) {
+                console.log("Heart beat update sucess");
+              } else {
+                console.error(
+                  "Fail to update heartbeat due to ",
+                  hb.data.details
+                );
+              }
+              toast.success("Update signal data to db");
+            }
+          } catch (err) {
+            toast.error(`Error add signal data to api due to ${err}`);
+          }finally{
+               refresh_client();
+          }
+        }
       }
     } catch (err) {
       toast.error(`Error update due to ${err}`);
@@ -276,7 +318,10 @@ const AdminPanel = () => {
                               // Fetch latest client data before showing modal
                               const latestClient = await getClients(id);
                               const latestDetails = latestClient[id];
-                              setSelectedUserData(latestDetails);
+                              setSelectedUserData((prev) => ({
+                                ...prev,
+                                [id]: latestDetails,
+                              }));
                               setShowViewModal(true);
                             } catch (err) {
                               toast.error(`Failed to load client data: ${err}`);
@@ -296,7 +341,10 @@ const AdminPanel = () => {
                               deletePeerForUser(id);
                             } else {
                               select_delete_users(id);
-                              setSelectedUserData(details);
+                              setSelectedUserData((prev) => ({
+                                ...prev,
+                                [id]: details,
+                              }));
                             }
                           }}
                         >
@@ -351,10 +399,10 @@ const AdminPanel = () => {
       <TestPortal
         key={refresh}
         showModal={showViewDataModal}
-        data={selectedUserData}
+        data={selectedUserData[selectedUserId]}
         onClose={() => {
           setShowViewModal(false);
-          setSelectedUserData([]);
+          setSelectedUserData({});
         }}
       />
     </>
