@@ -72,6 +72,7 @@ const AdminPanel = () => {
         delete peerRef.current[id]; // remove reference
         console.log("Deleted peer object for", id);
         toast.success(`Peer for ${id} destroyed successfully.`);
+        refresh_client();
         return true;
       } catch (err) {
         console.error(`Failed to destroy peer for ${id}:`, err);
@@ -208,8 +209,8 @@ const AdminPanel = () => {
         console.log("ice candidate:::", icd);
         console.log("SDP:::", sdp);
         console.log("update existing signal data");
-        if(selectedUserId){
-                    try {
+        if (selectedUserId) {
+          try {
             let rnd = await updateSDP({
               client_id: selectedUserId,
               sdp: offer.sdp,
@@ -218,7 +219,6 @@ const AdminPanel = () => {
               toast.error(`Error add data to db due to\n\n${reason}`)
             );
             if (rnd.status === 200) {
-           
               let hb = await heartbeat({
                 client_id: selectedUserId,
                 status: "disconnected",
@@ -235,8 +235,8 @@ const AdminPanel = () => {
             }
           } catch (err) {
             toast.error(`Error add signal data to api due to ${err}`);
-          }finally{
-               refresh_client();
+          } finally {
+            refresh_client();
           }
         }
       }
@@ -335,7 +335,11 @@ const AdminPanel = () => {
                           className={`btn btn-circle btn-xs ${
                             peerRef.current[id] ? "btn-primary" : "btn-error"
                           }`}
-                          title="Delete Client"
+                          title={
+                            peerRef.current[id]
+                              ? "Download Peer"
+                              : "Delete peer"
+                          }
                           onClick={() => {
                             if (peerRef.current[id]) {
                               deletePeerForUser(id);

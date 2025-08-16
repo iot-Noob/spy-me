@@ -26,7 +26,9 @@ const TestPortal = ({ showModal, onClose, data }) => {
     }
     return (
       <pre className="bg-gray-100 p-2 rounded overflow-x-auto text-sm max-h-32">
-        {iceArray.map((ice, idx) => `${idx + 1}. ${ice}`).join("\n")}
+        {iceArray
+          .map((ice, idx) => `${idx + 1}. ${JSON.stringify(ice, null, 2)}`)
+          .join("\n\n")}
       </pre>
     );
   };
@@ -53,7 +55,9 @@ const TestPortal = ({ showModal, onClose, data }) => {
             value={offerSDP}
             readOnly
           />
-          <label className="font-semibold mt-2 block">Offer ICE Candidates:</label>
+          <label className="font-semibold mt-2 block">
+            Offer ICE Candidates:
+          </label>
           {renderIceList(offerICE)}
         </div>
 
@@ -65,7 +69,9 @@ const TestPortal = ({ showModal, onClose, data }) => {
             value={answerSDP}
             readOnly
           />
-          <label className="font-semibold mt-2 block">Answer ICE Candidates:</label>
+          <label className="font-semibold mt-2 block">
+            Answer ICE Candidates:
+          </label>
           {renderIceList(answerICE)}
         </div>
       </div>
