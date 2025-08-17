@@ -1,4 +1,4 @@
-import { Suspense } from 'react'
+import { Suspense ,useEffect} from 'react'
 import { Route, Routes } from 'react-router-dom'
 import './App.css'
 import { pages } from './index'
@@ -6,6 +6,14 @@ import { pages } from './index'
   import 'react-toastify/dist/ReactToastify.css';
 
 function App() {
+   useEffect(() => {
+    if (Notification.permission !== "granted") {
+      Notification.requestPermission();
+    }
+     if (Notification.permission === "default") {
+    Notification.requestPermission(); // user gesture recommended
+  }
+  }, []);
  
   return (
     <>

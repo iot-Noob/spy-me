@@ -93,8 +93,10 @@ export default class WebRTCManager {
       this.dcs = false;
       this.emit("data-close", isReceiver);
     };
-    this.dataChannel.onerror = (err) => this.emit("data-error", err, isReceiver);
-    this.dataChannel.onmessage = (e) => this.emit("data-message", e.data, isReceiver);
+    this.dataChannel.onerror = (err) =>
+      this.emit("data-error", err, isReceiver);
+    this.dataChannel.onmessage = (e) =>
+      this.emit("data-message", e.data, isReceiver);
   }
 
   addStream(stream) {
@@ -120,7 +122,9 @@ export default class WebRTCManager {
 
   async createAnswer(remoteOffer, ice_data = []) {
     this.createPeer();
-    await this.peer.setRemoteDescription(new RTCSessionDescription(remoteOffer));
+    await this.peer.setRemoteDescription(
+      new RTCSessionDescription(remoteOffer)
+    );
 
     for (const ice of ice_data) {
       if (ice?.candidate && ice.sdpMid != null && ice.sdpMLineIndex != null) {
@@ -161,10 +165,15 @@ export default class WebRTCManager {
   }
 
   getStatus() {
+    const videoTrack = this._lastRemoteStream?.getVideoTracks()[0];
+    const audioTrack = this._lastRemoteStream?.getAudioTracks()[0];
+
     return {
       peerConnectionState: this.peer?.connectionState || "not-created",
       iceConnectionState: this.peer?.iceConnectionState || "not-created",
       dataChannelState: this.dataChannel?.readyState || "no-channel",
+      videoActive: videoTrack ? videoTrack.readyState === "live" && !videoTrack.muted : false,
+      audioActive: audioTrack ? audioTrack.readyState === "live" && !audioTrack.muted : false,
     };
   }
 
@@ -175,7 +184,7 @@ export default class WebRTCManager {
     this.dataChannel = null;
     this.emit("closed");
   }
-    destroy() {
+  destroy() {
     if (this.peer) {
       this.peer.close();
       this.peer = null;

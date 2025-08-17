@@ -24,6 +24,8 @@ import { FaRegEye } from "react-icons/fa";
 import TestPortal from "../Components/TestPortal";
 import WebRTCManager from "../Helper/WebRTCManager";
 import { MdDownload } from "react-icons/md";
+import { TbDatabaseMinus } from "react-icons/tb";
+import { notifyUser } from "../Helper/WindowsNotification";
 /*
 ----------------Imports end----------------
 */
@@ -42,7 +44,8 @@ const AdminPanel = () => {
   let [localIceCand, setLocalIceCand] = useState({});
   let [updatingUsers, setUpdatingUsers] = useState({});
   let [userSDP, setUserSDP] = useState({});
-
+  let [peerStatus, setPeerStatus] = useState({});
+  const prevStatusRef = useRef({});
   /*
 ----------------State manager End----------------
 */
@@ -62,6 +65,11 @@ const AdminPanel = () => {
     const newPeer = new WebRTCManager();
     newPeer.createPeer(true);
     peerRef.current[userId] = newPeer;
+    notifyUser(
+      "Request for peer creation",
+      `Qrquest for peer creation for user ${userId}`,
+      "/server.png"
+    );
   };
 
   const deletePeerForUser = (id) => {
@@ -72,11 +80,17 @@ const AdminPanel = () => {
         delete peerRef.current[id]; // remove reference
         console.log("Deleted peer object for", id);
         toast.success(`Peer for ${id} destroyed successfully.`);
+        notifyUser(
+          "Destroy peer sucess",
+          `USER ${id} peer destroyed`,
+          "/server.png"
+        );
         refresh_client();
         return true;
       } catch (err) {
         console.error(`Failed to destroy peer for ${id}:`, err);
         toast.error(`Failed to destroy peer for ${id}`);
+
         return false;
       }
     } else {
@@ -103,7 +117,121 @@ const AdminPanel = () => {
       console.error("Error showing peers due to", err);
     }
   };
+
+  let showStatusForPeer = (id) => {
+    const peer = peerRef.current[id];
+    if (!peer) {
+      toast.error(`User ${id} → No peer found`);
+      return null;
+    }
+
+    try {
+      return peer.getStatus();
+    } catch (err) {
+      toast.error(`User ${id} → Error getting status: ${err}`);
+      return null;
+    }
+  };
+  const showStatusOfPeerAll = async () => {
+    const peers = peerRef.current;
+    const ids = Object.keys(peers);
+
+    if (ids.length === 0) return;
+
+    const newStatus = {};
+
+    for (const uid of ids) {
+      if (peers[uid]) {
+        const status = peers[uid].getStatus();
+        const peerState = status?.peerConnectionState || "disconnected";
+
+        newStatus[uid] = status;
+
+        // Compare with previous state
+        const prevState = prevStatusRef.current[uid]?.peerConnectionState;
+
+        if (peerState !== prevState) {
+          // 🔥 Only send heartbeat if state changed
+          try {
+            await heartbeat({
+              client_id: uid,
+              status: peerState,
+            });
+            console.log(`Heartbeat sent for ${uid}: ${peerState}`);
+          } catch (err) {
+            console.error(`Failed heartbeat for ${uid}:`, err);
+          }
+        }
+      }
+    }
+
+    // Update both React state (for UI) and prev ref
+    setPeerStatus(newStatus);
+    prevStatusRef.current = newStatus;
+  };
   //----------------Peer Handler End----------------
+  let clean_api_data = async () => {
+    try {
+      // ✅ Always fetch fresh list
+      let clientList = await getClients();
+      let promises = clientList.client_ids.map((cid) => getClients(cid));
+      let clientsData = await Promise.all(promises);
+
+      for (const v of clientsData) {
+        let id = Object.keys(v)[0];
+        let client = v[id];
+
+        if (
+          (client.sdp && client.ice.length > 0) ||
+          (client.answer_sdp && client.answer_ice.length > 0)
+        ) {
+          try {
+            let rnd = await updateSDP({
+              client_id: id,
+              sdp: "",
+              ice: [],
+            }).catch((reason) =>
+              toast.error(`Error nullify data for ${id} due to\n\n${reason}`)
+            );
+            if (peerRef.current[id]) {
+              deletePeerForUser(id);
+            }
+            if (rnd?.status === 200) {
+              let hb = await heartbeat({
+                client_id: id,
+                status: "disconnected",
+              });
+
+              if (hb?.status === 200) {
+                console.log("Heartbeat update success for", id);
+              } else {
+                console.error(
+                  "Fail to update heartbeat for",
+                  id,
+                  hb?.data?.details
+                );
+              }
+              notifyUser(
+                "Clean Peer singal data from db",
+                `user ${id} signal data clean`,
+                "/server.png"
+              );
+              toast.success(`Cleared signal data for client ${id}`);
+            }
+          } catch (err) {
+            toast.error(`Error cleaning client ${id} due to ${err}`);
+          }
+
+          console.log("✅ Complete client: Null all data from API", id, client);
+        } else {
+          // toast.warn("No signal data left to delete")
+          console.log("⚠️ Incomplete client:", id, client);
+        }
+      }
+    } catch (err) {
+      toast.error(`Cleanup fail due to \n\n${err}`);
+    }
+  };
 
   let fetch_clients = async () => {
     //fetch clients from api and show them on table
@@ -147,7 +275,11 @@ const AdminPanel = () => {
         );
       }
       let dr = await deleteClient(selectedUserId);
-
+      notifyUser(
+        `Deleted user ${selectedUserId} sucessful`,
+        `USER ${selectedUserId} peer deleted`,
+        "/server.png"
+      );
       if (dr.status === 200) {
         toast.success(`Deleted user "${selectedUserId}" successfully`);
 
@@ -204,11 +336,6 @@ const AdminPanel = () => {
           [selectedUserId]: iceCandidates,
         }));
         setUserSDP((prev) => ({ ...prev, [selectedUserId]: offer.sdp }));
-        let icd = localIceCand[selectedUserId];
-        let sdp = userSDP[selectedUserId];
-        console.log("ice candidate:::", icd);
-        console.log("SDP:::", sdp);
-        console.log("update existing signal data");
         if (selectedUserId) {
           try {
             let rnd = await updateSDP({
@@ -218,10 +345,10 @@ const AdminPanel = () => {
             }).catch((reason) =>
               toast.error(`Error add data to db due to\n\n${reason}`)
             );
-            if (rnd.status === 200) {
+            if (rnd?.status === 200) {
               let hb = await heartbeat({
                 client_id: selectedUserId,
-                status: "disconnected",
+                status: peerStatus[selectedUserId]?.peerConnectionState,
               });
               if (hb.status === 200) {
                 console.log("Heart beat update sucess");
@@ -246,6 +373,19 @@ const AdminPanel = () => {
       setUpdatingUsers((prev) => ({ ...prev, [selectedUserId]: false }));
     }
   };
+  useEffect(() => {
+    clean_api_data();
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      showStatusOfPeerAll();
+    }, 1000); // update every 1 second (adjust as needed)
+
+    return () => clearInterval(interval); // cleanup on unmount
+  }, []);
+
+  let handle_answer = async () => {};
 
   // ------------Update Logic End----------------
 
@@ -257,15 +397,27 @@ const AdminPanel = () => {
       <div className="p-4">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Client Management</h2>
-          <button
-            className="btn btn-circle btn-primary"
-            title="Add Client"
-            onClick={() => {
-              rtcSettingsModalToggler.current.showModal();
-            }}
-          >
-            <IoIosAddCircle size={28} />
-          </button>
+          <div className="flex flex-cols-2 gap-2">
+            <button
+              className="btn btn-circle btn-primary"
+              title="Add Client"
+              onClick={() => {
+                rtcSettingsModalToggler.current.showModal();
+              }}
+            >
+              <IoIosAddCircle size={28} />
+            </button>
+
+            <button
+              className="btn btn-circle btn-primary"
+              title="Remove all Signal data from database"
+              onClick={() => {
+                clean_api_data();
+              }}
+            >
+              <TbDatabaseMinus size={28} />
+            </button>
+          </div>
         </div>
 
         <table className="table table-zebra w-full min-w-[500px]">
@@ -318,10 +470,7 @@ const AdminPanel = () => {
                               // Fetch latest client data before showing modal
                               const latestClient = await getClients(id);
                               const latestDetails = latestClient[id];
-                              setSelectedUserData((prev) => ({
-                                ...prev,
-                                [id]: latestDetails,
-                              }));
+                              setSelectedUserData({ [id]: latestDetails });
                               setShowViewModal(true);
                             } catch (err) {
                               toast.error(`Failed to load client data: ${err}`);
@@ -370,7 +519,13 @@ const AdminPanel = () => {
                           <RxUpdate size={16} />
                         </button>
                         <button
-                          disabled={!peerRef.current[id] || updatingUsers[id]}
+                          disabled={
+                            !peerRef.current[id] ||
+                            updatingUsers[id] ||
+                            (!client?.sdp && !(client?.ice?.length > 0)) ||
+                            (!client?.answer_sdp &&
+                              !(client?.answer_ice?.length > 0))
+                          }
                           className="btn btn-circle btn-xs btn-primary"
                           title="Call Client"
                         >
@@ -392,6 +547,7 @@ const AdminPanel = () => {
         showModal={showDelModal}
         onClose={() => {
           setShowDelModal(false);
+          setSelectUserId("");
         }}
         message={"Are you sure you want to delete this user"}
         title={`Delete user ${selectedUserId}`}

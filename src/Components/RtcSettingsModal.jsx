@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { toast } from "react-toastify";
 import { IoIosCloseCircle } from "react-icons/io";
 import { registerSDP } from "../Helper/Requests";
+import { asyncNotifyUser } from "../Helper/WindowsNotification";
 const RtcSettingsModal = ({ dialogRef ,rfrsh}) => {
   const [userId, setUserId] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -28,8 +29,9 @@ const RtcSettingsModal = ({ dialogRef ,rfrsh}) => {
         sdp: "",
         ice: [],
       });
-
+      
       if (res?.status === 200) {
+       await  asyncNotifyUser(`Sucessfully register new user ${trimmedId}`,`User Registration Sucessful ${trimmedId}`,'/server.png')
         toast.success("User registered successfully");
         dialogRef.current?.close();
         setUserId("");

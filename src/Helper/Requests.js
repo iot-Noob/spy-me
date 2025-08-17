@@ -86,9 +86,11 @@ export const deleteClient = async (clientId) => {
   return res.data;
 };
 
-export const heartbeat = async (payload) => {
+export const heartbeat = async (payload,verbose=false) => {
   const res = await api.post("/heartbeat", payload);
+  if(verbose){
   toast.success("Heartbeat updated successfully");
+  }
   return res.data;
 };
 
