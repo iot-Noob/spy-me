@@ -3,12 +3,7 @@
 */
 
 import React, { useEffect, useRef, useState, useMemo } from "react";
-import { MdEdit } from "react-icons/md";
-import { AiFillDelete } from "react-icons/ai";
 import { IoIosAddCircle } from "react-icons/io";
-import { RxUpdate } from "react-icons/rx";
-import { ImPhoneHangUp } from "react-icons/im";
-import { IoCallOutline } from "react-icons/io5";
 import RtcSettingsModal from "../Components/RtcSettingsModal";
 import {
   getClients,
@@ -20,12 +15,11 @@ import {
 import CustModal from "../Components/CustModal";
 import ActionModal from "../Components/ActionModal";
 import { toast } from "react-toastify";
-import { FaRegEye } from "react-icons/fa";
 import TestPortal from "../Components/TestPortal";
 import WebRTCManager from "../Helper/WebRTCManager";
-import { MdDownload } from "react-icons/md";
 import { TbDatabaseMinus } from "react-icons/tb";
 import { notifyUser } from "../Helper/WindowsNotification";
+import ClientTable from "../Components/ClientTable";
 /*
 ----------------Imports end----------------
 */
@@ -420,125 +414,35 @@ const AdminPanel = () => {
           </div>
         </div>
 
-        <table className="table table-zebra w-full min-w-[500px]">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Status</th>
-              <th>Heartbeat</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {clients.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="text-center py-6 text-gray-500">
-                  No clients found.
-                </td>
-              </tr>
-            ) : (
-              clients.map((client, idx) => {
-                const id = Object.keys(client)[0]; // "test"
-                const details = client[id]; // { sdp, status, last_heartbeat, ice }
-
-                return (
-                  <tr key={idx}>
-                    <td>{id}</td>
-                    <td>
-                      <span
-                        className={`badge ${
-                          details.status === "connected"
-                            ? "badge-success"
-                            : "badge-warning"
-                        }`}
-                      >
-                        {details.status}
-                      </span>
-                    </td>
-                    <td>
-                      {new Date(details.last_heartbeat * 1000).toLocaleString()}
-                    </td>
-                    <td>
-                      <div className="flex items-center gap-1">
-                        <button
-                          className="btn btn-circle btn-xs btn-info"
-                          title="View  Client"
-                          onClick={async () => {
-                            setSelectUserId(id);
-
-                            try {
-                              // Fetch latest client data before showing modal
-                              const latestClient = await getClients(id);
-                              const latestDetails = latestClient[id];
-                              setSelectedUserData({ [id]: latestDetails });
-                              setShowViewModal(true);
-                            } catch (err) {
-                              toast.error(`Failed to load client data: ${err}`);
-                            }
-                          }}
-                        >
-                          <FaRegEye size={16} />
-                        </button>
-                        <button
-                          disabled={updatingUsers[id]}
-                          className={`btn btn-circle btn-xs ${
-                            peerRef.current[id] ? "btn-primary" : "btn-error"
-                          }`}
-                          title={
-                            peerRef.current[id]
-                              ? "Download Peer"
-                              : "Delete peer"
-                          }
-                          onClick={() => {
-                            if (peerRef.current[id]) {
-                              deletePeerForUser(id);
-                            } else {
-                              select_delete_users(id);
-                              setSelectedUserData((prev) => ({
-                                ...prev,
-                                [id]: details,
-                              }));
-                            }
-                          }}
-                        >
-                          {peerRef.current[id] ? (
-                            <MdDownload size={16} />
-                          ) : (
-                            <AiFillDelete size={16} />
-                          )}
-                        </button>
-                        <button
-                          disabled={updatingUsers[id]}
-                          onClick={async () => {
-                            setSelectUserId(id);
-                            await update_data();
-                          }}
-                          className="btn btn-circle btn-xs btn-primary"
-                          title="Update SDP"
-                        >
-                          <RxUpdate size={16} />
-                        </button>
-                        <button
-                          disabled={
-                            !peerRef.current[id] ||
-                            updatingUsers[id] ||
-                            (!client?.sdp && !(client?.ice?.length > 0)) ||
-                            (!client?.answer_sdp &&
-                              !(client?.answer_ice?.length > 0))
-                          }
-                          className="btn btn-circle btn-xs btn-primary"
-                          title="Call Client"
-                        >
-                          <IoCallOutline size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+        <ClientTable
+          clients={clients}
+          peerRef={peerRef}
+          updatingUsers={updatingUsers}
+          onView={async (id) => {
+            setSelectUserId(id);
+            try {
+              const latestClient = await getClients(id);
+              const latestDetails = latestClient[id];
+              setSelectedUserData({ [id]: latestDetails });
+              setShowViewModal(true);
+            } catch (err) {
+              toast.error(`Failed to load client data: ${err}`);
+            }
+          }}
+          onDeletePeer={(id) => deletePeerForUser(id)}
+          onSelectDeleteUser={(id, details) => {
+            select_delete_users(id);
+            setSelectedUserData((prev) => ({ ...prev, [id]: details }));
+          }}
+          onUpdate={async (id) => {
+            setSelectUserId(id);
+            await update_data();
+          }}
+          onCall={(id) => {
+            console.log("Call client", id);
+            // handle_answer(id)
+          }}
+        />
       </div>
       <ActionModal
         onConfirm={() => {
