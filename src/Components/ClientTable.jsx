@@ -3,10 +3,10 @@ import React, { useState, useMemo } from "react";
 import { FaRegEye } from "react-icons/fa";
 import { MdDownload } from "react-icons/md";
 import { AiFillDelete } from "react-icons/ai";
-import { RxUpdate } from "react-icons/rx";
+import { RxSpeakerLoud, RxUpdate } from "react-icons/rx";
 import { IoCallOutline } from "react-icons/io5";
 import { FaSort, FaSortUp, FaSortDown } from "react-icons/fa"; // sort icons
-
+import { FaVideo } from "react-icons/fa";
 const ClientTable = ({
   clients,
   peerRef,
@@ -16,6 +16,7 @@ const ClientTable = ({
   onSelectDeleteUser,
   onUpdate,
   onCall,
+  all_status,
 }) => {
   const [sortConfig, setSortConfig] = useState({ key: "id", direction: "asc" });
   const [filter, setFilter] = useState("");
@@ -55,7 +56,7 @@ const ClientTable = ({
 
     return processed;
   }, [clients, filter, sortConfig]);
-
+ 
   // Pagination
   const totalPages = Math.ceil(sortedFilteredClients.length / rowsPerPage);
   const paginatedClients = sortedFilteredClients.slice(
@@ -73,7 +74,8 @@ const ClientTable = ({
   };
 
   const getSortIcon = (key) => {
-    if (sortConfig.key !== key) return <FaSort className="inline ml-1 opacity-40" />;
+    if (sortConfig.key !== key)
+      return <FaSort className="inline ml-1 opacity-40" />;
     return sortConfig.direction === "asc" ? (
       <FaSortUp className="inline ml-1 text-blue-500" />
     ) : (
@@ -89,9 +91,24 @@ const ClientTable = ({
     } else if (currentPage <= 3) {
       pages = [1, 2, 3, 4, "...", totalPages];
     } else if (currentPage >= totalPages - 2) {
-      pages = [1, "...", totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+      pages = [
+        1,
+        "...",
+        totalPages - 3,
+        totalPages - 2,
+        totalPages - 1,
+        totalPages,
+      ];
     } else {
-      pages = [1, "...", currentPage - 1, currentPage, currentPage + 1, "...", totalPages];
+      pages = [
+        1,
+        "...",
+        currentPage - 1,
+        currentPage,
+        currentPage + 1,
+        "...",
+        totalPages,
+      ];
     }
     return pages;
   };
@@ -134,7 +151,10 @@ const ClientTable = ({
               <th onClick={() => requestSort("id")} className="cursor-pointer">
                 ID {getSortIcon("id")}
               </th>
-              <th onClick={() => requestSort("status")} className="cursor-pointer">
+              <th
+                onClick={() => requestSort("status")}
+                className="cursor-pointer"
+              >
                 Status {getSortIcon("status")}
               </th>
               <th
@@ -166,15 +186,23 @@ const ClientTable = ({
                   >
                     <td className="font-mono text-sm">{id}</td>
                     <td>
-                      <span
-                        className={`badge px-3 py-2 ${
-                          details.status === "connected"
-                            ? "badge-success"
-                            : "badge-warning"
-                        }`}
-                      >
-                        {details.status}
-                      </span>
+                      <div className="grid grid-cols-3 gap-1">
+                        <div>
+                          <span
+                            className={`badge px-3 py-2 ${
+                              details.status === "connected"
+                                ? "badge-success"
+                                : "badge-warning"
+                            }`}
+                          >
+                            {details.status}
+                          </span>
+                        </div>
+                        <div>{all_status[id]?.videoActive && <FaVideo />}</div>
+                        <div>
+                          {all_status[id]?.audioActive && <RxSpeakerLoud />}
+                        </div>
+                      </div>
                     </td>
                     <td className="text-sm text-gray-600">
                       {new Date(details.last_heartbeat * 1000).toLocaleString()}
@@ -193,7 +221,9 @@ const ClientTable = ({
                           className={`btn btn-circle btn-xs ${
                             peerRef.current[id] ? "btn-primary" : "btn-error"
                           } tooltip`}
-                          data-tip={peerRef.current[id] ? "Download Peer" : "Delete"}
+                          data-tip={
+                            peerRef.current[id] ? "Download Peer" : "Delete"
+                          }
                           onClick={() =>
                             peerRef.current[id]
                               ? onDeletePeer(id)
@@ -224,7 +254,7 @@ const ClientTable = ({
                           }
                           className="btn btn-circle btn-xs btn-success tooltip"
                           data-tip="Call Client"
-                          onClick={() => onCall(id)}
+                          onClick={() => onCall(id, details)}
                         >
                           <IoCallOutline size={14} />
                         </button>

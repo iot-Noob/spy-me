@@ -164,18 +164,25 @@ export default class WebRTCManager {
     this.dataChannel.send(data);
   }
 
-  getStatus() {
-    const videoTrack = this._lastRemoteStream?.getVideoTracks()[0];
-    const audioTrack = this._lastRemoteStream?.getAudioTracks()[0];
-
+getStatus() {
+  if (!this.peer) {
     return {
-      peerConnectionState: this.peer?.connectionState || "not-created",
-      iceConnectionState: this.peer?.iceConnectionState || "not-created",
-      dataChannelState: this.dataChannel?.readyState || "no-channel",
-      videoActive: videoTrack ? videoTrack.readyState === "live" && !videoTrack.muted : false,
-      audioActive: audioTrack ? audioTrack.readyState === "live" && !audioTrack.muted : false,
+      peerConnectionState: "not-created",
+      iceConnectionState: "not-created",
+      dataChannelState: "not-created",
+      videoActive: false,
+      audioActive: false,
     };
   }
+
+  return {
+    peerConnectionState: this.peer.connectionState || "unknown",
+    iceConnectionState: this.peer.iceConnectionState || "unknown",
+    dataChannelState: this.dataChannel?.readyState || "no-channel",
+    videoActive: this.stream?.getVideoTracks().some(track => track.enabled) || false,
+    audioActive: this.stream?.getAudioTracks().some(track => track.enabled) || false,
+  };
+}
 
   close() {
     if (this.dataChannel) this.dataChannel.close();

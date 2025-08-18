@@ -11,6 +11,7 @@ import {
   registerSDP,
   heartbeat,
   updateSDP,
+  updateAnswer,
 } from "../Helper/Requests";
 import CustModal from "../Components/CustModal";
 import ActionModal from "../Components/ActionModal";
@@ -135,7 +136,7 @@ const AdminPanel = () => {
     const newStatus = {};
 
     for (const uid of ids) {
-      if (peers[uid]) {
+      if (peers[uid] && typeof peers[uid].getStatus === "function") {
         const status = peers[uid].getStatus();
         const peerState = status?.peerConnectionState || "disconnected";
 
@@ -158,7 +159,7 @@ const AdminPanel = () => {
         }
       }
     }
-
+  
     // Update both React state (for UI) and prev ref
     setPeerStatus(newStatus);
     prevStatusRef.current = newStatus;
@@ -187,8 +188,18 @@ const AdminPanel = () => {
             }).catch((reason) =>
               toast.error(`Error nullify data for ${id} due to\n\n${reason}`)
             );
+            let uans=await updateAnswer({
+              client_id:id,
+                answer_sdp: "",
+                ice: []
+            }).catch(reason=>{
+              toast.error(`Error update answer due to ${reason}`)
+            })
             if (peerRef.current[id]) {
               deletePeerForUser(id);
+            }
+            if (uans?.status===200){
+              console.log("answer update sucess")
             }
             if (rnd?.status === 200) {
               let hb = await heartbeat({
@@ -374,12 +385,42 @@ const AdminPanel = () => {
   useEffect(() => {
     const interval = setInterval(() => {
       showStatusOfPeerAll();
-    }, 1000); // update every 1 second (adjust as needed)
+      refresh_client()
+    }, 3000);  
 
     return () => clearInterval(interval); // cleanup on unmount
   }, []);
 
-  let handle_answer = async () => {};
+let handle_answer = async (id, details) => {
+  refresh_client();
+
+  if (peerRef.current[id]) {
+    try {
+      // 1. Set the remote answer SDP
+      await peerRef.current[id].setRemoteDescription({
+        type: "answer",
+        sdp: details.answer_sdp,
+      });
+
+      // 2. Add ICE candidates (if any)
+      if (details.answer_ice) {
+        for (const ice of details.answer_ice) {
+          try {
+            await peerRef.current[id].addIceCandidate(ice);
+          } catch (err) {
+            console.error("Failed to add ICE candidate", err);
+          }
+        }
+      }
+
+      console.log("Answer successfully applied for", id);
+    } catch (err) {
+      console.error("Error handling answer:", err);
+    }
+  } else {
+    toast.error(`Can't call peer, not available for user ${id}`);
+  }
+};
 
   // ------------Update Logic End----------------
 
@@ -415,6 +456,7 @@ const AdminPanel = () => {
         </div>
 
         <ClientTable
+          all_status={peerStatus}
           clients={clients}
           peerRef={peerRef}
           updatingUsers={updatingUsers}
@@ -438,8 +480,9 @@ const AdminPanel = () => {
             setSelectUserId(id);
             await update_data();
           }}
-          onCall={(id) => {
-            console.log("Call client", id);
+          onCall={(id,details) => {
+            setSelectedUserData(details)
+           handle_answer(id,details)
             // handle_answer(id)
           }}
         />
