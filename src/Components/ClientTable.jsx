@@ -5,6 +5,7 @@ import { MdDownload } from "react-icons/md";
 import { AiFillDelete } from "react-icons/ai";
 import { RxUpdate } from "react-icons/rx";
 import { IoCallOutline } from "react-icons/io5";
+import { FaSort, FaSortUp, FaSortDown } from "react-icons/fa"; // sort icons
 
 const ClientTable = ({
   clients,
@@ -71,6 +72,15 @@ const ClientTable = ({
     });
   };
 
+  const getSortIcon = (key) => {
+    if (sortConfig.key !== key) return <FaSort className="inline ml-1 opacity-40" />;
+    return sortConfig.direction === "asc" ? (
+      <FaSortUp className="inline ml-1 text-blue-500" />
+    ) : (
+      <FaSortDown className="inline ml-1 text-blue-500" />
+    );
+  };
+
   // Smart pagination range
   const getPageNumbers = () => {
     let pages = [];
@@ -87,46 +97,53 @@ const ClientTable = ({
   };
 
   return (
-    <div>
-      <div className="mb-3 flex flex-col md:flex-row items-center justify-between gap-2">
+    <div className="p-4 bg-white rounded-xl shadow-lg">
+      {/* Top Controls */}
+      <div className="mb-4 flex flex-col md:flex-row items-center justify-between gap-3">
         <input
           type="text"
-          placeholder="Search by ID..."
-          className="input input-bordered input-sm w-full md:w-1/3"
+          placeholder="🔍 Search by ID..."
+          className="input input-bordered input-sm w-full md:w-1/3 focus:ring focus:ring-blue-300"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium">Rows:</label>
+          <select
+            value={rowsPerPage}
+            onChange={(e) => {
+              setRowsPerPage(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+            className="select select-bordered select-sm"
+          >
+            {[5, 10, 20, 50].map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      <div className="overflow-x-auto">
+      {/* Table */}
+      <div className="overflow-x-auto border rounded-lg">
         <table className="table table-zebra w-full min-w-[500px]">
-          <thead>
+          <thead className="bg-gray-100 text-gray-700">
             <tr>
               <th onClick={() => requestSort("id")} className="cursor-pointer">
-                ID{" "}
-                {sortConfig.key === "id" && (
-                  <span>{sortConfig.direction === "asc" ? "↑" : "↓"}</span>
-                )}
+                ID {getSortIcon("id")}
               </th>
-              <th
-                onClick={() => requestSort("status")}
-                className="cursor-pointer"
-              >
-                Status{" "}
-                {sortConfig.key === "status" && (
-                  <span>{sortConfig.direction === "asc" ? "↑" : "↓"}</span>
-                )}
+              <th onClick={() => requestSort("status")} className="cursor-pointer">
+                Status {getSortIcon("status")}
               </th>
               <th
                 onClick={() => requestSort("last_heartbeat")}
                 className="cursor-pointer"
               >
-                Heartbeat{" "}
-                {sortConfig.key === "last_heartbeat" && (
-                  <span>{sortConfig.direction === "asc" ? "↑" : "↓"}</span>
-                )}
+                Last Heartbeat {getSortIcon("last_heartbeat")}
               </th>
-              <th>Action</th>
+              <th className="text-center">Actions</th>
             </tr>
           </thead>
 
@@ -143,11 +160,14 @@ const ClientTable = ({
                 const details = client[id];
 
                 return (
-                  <tr key={idx}>
-                    <td>{id}</td>
+                  <tr
+                    key={idx}
+                    className="hover:bg-gray-50 transition-colors duration-150"
+                  >
+                    <td className="font-mono text-sm">{id}</td>
                     <td>
                       <span
-                        className={`badge ${
+                        className={`badge px-3 py-2 ${
                           details.status === "connected"
                             ? "badge-success"
                             : "badge-warning"
@@ -156,43 +176,43 @@ const ClientTable = ({
                         {details.status}
                       </span>
                     </td>
-                    <td>
+                    <td className="text-sm text-gray-600">
                       {new Date(details.last_heartbeat * 1000).toLocaleString()}
                     </td>
                     <td>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center justify-center gap-2">
                         <button
-                          className="btn btn-circle btn-xs btn-info"
+                          className="btn btn-circle btn-xs btn-info tooltip"
+                          data-tip="View"
                           onClick={() => onView(id)}
-                          title="View Client"
                         >
-                          <FaRegEye size={16} />
+                          <FaRegEye size={14} />
                         </button>
                         <button
                           disabled={updatingUsers[id]}
                           className={`btn btn-circle btn-xs ${
                             peerRef.current[id] ? "btn-primary" : "btn-error"
-                          }`}
+                          } tooltip`}
+                          data-tip={peerRef.current[id] ? "Download Peer" : "Delete"}
                           onClick={() =>
                             peerRef.current[id]
                               ? onDeletePeer(id)
                               : onSelectDeleteUser(id, details)
                           }
-                          title={peerRef.current[id] ? "Download Peer" : "Delete"}
                         >
                           {peerRef.current[id] ? (
-                            <MdDownload size={16} />
+                            <MdDownload size={14} />
                           ) : (
-                            <AiFillDelete size={16} />
+                            <AiFillDelete size={14} />
                           )}
                         </button>
                         <button
                           disabled={updatingUsers[id]}
-                          className="btn btn-circle btn-xs btn-primary"
+                          className="btn btn-circle btn-xs btn-primary tooltip"
+                          data-tip="Update SDP"
                           onClick={() => onUpdate(id)}
-                          title="Update SDP"
                         >
-                          <RxUpdate size={16} />
+                          <RxUpdate size={14} />
                         </button>
                         <button
                           disabled={
@@ -202,11 +222,11 @@ const ClientTable = ({
                             (!details?.answer_sdp &&
                               !(details?.answer_ice?.length > 0))
                           }
-                          className="btn btn-circle btn-xs btn-primary"
+                          className="btn btn-circle btn-xs btn-success tooltip"
+                          data-tip="Call Client"
                           onClick={() => onCall(id)}
-                          title="Call Client"
                         >
-                          <IoCallOutline size={16} />
+                          <IoCallOutline size={14} />
                         </button>
                       </div>
                     </td>
@@ -218,25 +238,11 @@ const ClientTable = ({
         </table>
       </div>
 
-      {/* Pagination Controls */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-3 mt-4">
-        <div className="flex items-center gap-2">
-          <label className="text-md">Items:</label>
-          <select
-            value={rowsPerPage}
-            onChange={(e) => {
-              setRowsPerPage(Number(e.target.value));
-              setCurrentPage(1);
-            }}
-            className="select select-bordered select-sm"
-          >
-            {[5, 10, 20, 50].map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
-            ))}
-          </select>
-        </div>
+      {/* Pagination */}
+      <div className="flex flex-col md:flex-row justify-between items-center gap-3 mt-5">
+        <span className="text-sm text-gray-500">
+          Page {currentPage} of {totalPages}
+        </span>
 
         <div className="join">
           <button
@@ -256,7 +262,7 @@ const ClientTable = ({
               <button
                 key={idx}
                 className={`join-item btn btn-sm ${
-                  currentPage === page ? "btn-active" : ""
+                  currentPage === page ? "btn-active btn-primary" : ""
                 }`}
                 onClick={() => setCurrentPage(page)}
               >
