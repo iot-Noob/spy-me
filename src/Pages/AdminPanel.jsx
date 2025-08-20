@@ -152,6 +152,7 @@ const AdminPanel = () => {
           // 🔥 Only send heartbeat if state changed
           try {
             if (uid) {
+              refresh_client()
               await heartbeat({
                 client_id: uid,
                 status: peerState,
@@ -257,10 +258,11 @@ const AdminPanel = () => {
     setRefresh((prev) => !prev);
   };
 
-  useEffect(() => {
-    fetch_clients();
-  }, [refresh]);
+useEffect(() => {
+  fetch_clients();
+}, [refresh,selectedUserData[selectedUserId]?.answer_sdp]);
 
+  
   //----------------Handle delete users function logic----------------
   let select_delete_users = (id) => {
     if (!id) {
@@ -372,7 +374,7 @@ const AdminPanel = () => {
                   );
                 }
               }
-
+              
               toast.success("Update signal data to db");
             }
           } catch (err) {
@@ -421,10 +423,12 @@ const AdminPanel = () => {
             }
           }
         }
-
+     
         console.log("Answer successfully applied for", id);
       } catch (err) {
         console.error("Error handling answer:", err);
+      }finally{
+        refresh_client()
       }
     } else {
       toast.error(`Can't call peer, not available for user ${id}`);
@@ -445,7 +449,6 @@ const AdminPanel = () => {
   };
   // ------------Update Logic End----------------
 
-  console.log(selectedUserId)
   //----------------Business logic End----------------
 
   //----------------Main Code Start----------------
