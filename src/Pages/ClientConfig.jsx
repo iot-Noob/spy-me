@@ -16,6 +16,7 @@ const ClientConfig = () => {
   let [refresh, setRefresh] = useState(false);
   let [cd, Scd] = useState();
   let [peerStatus, setPeerStatus] = useState();
+  let localVideoRef = useRef(null);
   //--------------State Manager End--------------
 
   //--------------Peer manager start--------------
@@ -59,7 +60,15 @@ const ClientConfig = () => {
       return false;
     }
   };
+  const stopAudio = (localStream) => {
+    if (!localStream) return;
 
+    localStream.getAudioTracks().forEach((track) => {
+      track.enabled = false; // disables sending audio to remote peer
+      // OR completely stop it:
+      // track.stop();
+    });
+  };
   const showPeerForUser = () => {
     const peer = peerRef.current;
 
@@ -77,9 +86,16 @@ const ClientConfig = () => {
 
     try {
       const status = peer.getStatus(); // get current peer status
-
+      console.log(status);
       // Update peerStatus state for the selected client
       setPeerStatus(status);
+
+      // if (status?.peerConnectionState !== "connected") {
+      //   peerRef?.current?.close();
+      //   peerRef?.current?.destroy?.();
+        
+      // }
+
       // setPeerStatus((prev) => ({
       //   ...prev,
       //   [selectedClient]: {
@@ -131,17 +147,24 @@ const ClientConfig = () => {
             break;
           }
         }
-        await addLocalMedia(peerRef.current.peer, {
+        //--------Add media data start--------
+        const localStream = await navigator.mediaDevices.getUserMedia({
           audio: true,
           video: false,
         });
-
+        console.log("lcoal_fucking_stream:::",localStream)
+        // peerRef.current.addStream(localStream);
+        // if(peerStatus?.peerConnectionState !== "connected"){
+        //   stopAudio(localStream)
+        // }
+        //--------Add media data End--------
         if (clientDetails.sdp && clientDetails.ice?.length > 0) {
           let sdp = clientDetails.sdp;
           let ice = clientDetails.ice;
           let ans = await peerRef.current.createAnswer(
             { type: "offer", sdp: sdp },
-            ice
+            ice,
+            localStream
           );
           let aid = peerRef.current.iceCandidates;
           console.log("answer:::", ans);
@@ -226,11 +249,16 @@ const ClientConfig = () => {
       <button
         onClick={handleSetAnswer}
         className="btn btn-primary w-full"
-        disabled={!selectedClient || !(cd?.sdp && cd?.ice?.length > 0)}
+        disabled={
+          !selectedClient ||
+          !(cd?.sdp && cd?.ice?.length > 0) ||
+          peerStatus?.peerConnectionState === "connected"
+        }
       >
         Set Answer
       </button>
       <button
+        disabled={peerStatus?.peerConnectionState === "connected"}
         onClick={() => {
           refresh_client();
         }}

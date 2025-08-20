@@ -21,6 +21,8 @@ import WebRTCManager from "../Helper/WebRTCManager";
 import { TbDatabaseMinus } from "react-icons/tb";
 import { notifyUser } from "../Helper/WindowsNotification";
 import ClientTable from "../Components/ClientTable";
+import AudioModal from "../Components/AudioModal";
+
 /*
 ----------------Imports end----------------
 */
@@ -41,6 +43,7 @@ const AdminPanel = () => {
   let [userSDP, setUserSDP] = useState({});
   let [peerStatus, setPeerStatus] = useState({});
   const prevStatusRef = useRef({});
+  let [amo, Samo] = useState(false);
   /*
 ----------------State manager End----------------
 */
@@ -148,10 +151,12 @@ const AdminPanel = () => {
         if (peerState !== prevState) {
           // 🔥 Only send heartbeat if state changed
           try {
-            await heartbeat({
-              client_id: uid,
-              status: peerState,
-            });
+            if (uid) {
+              await heartbeat({
+                client_id: uid,
+                status: peerState,
+              });
+            }
             console.log(`Heartbeat sent for ${uid}: ${peerState}`);
           } catch (err) {
             console.error(`Failed heartbeat for ${uid}:`, err);
@@ -159,7 +164,7 @@ const AdminPanel = () => {
         }
       }
     }
-  
+
     // Update both React state (for UI) and prev ref
     setPeerStatus(newStatus);
     prevStatusRef.current = newStatus;
@@ -188,18 +193,18 @@ const AdminPanel = () => {
             }).catch((reason) =>
               toast.error(`Error nullify data for ${id} due to\n\n${reason}`)
             );
-            let uans=await updateAnswer({
-              client_id:id,
-                answer_sdp: "",
-                ice: []
-            }).catch(reason=>{
-              toast.error(`Error update answer due to ${reason}`)
-            })
+            let uans = await updateAnswer({
+              client_id: id,
+              answer_sdp: "",
+              ice: [],
+            }).catch((reason) => {
+              toast.error(`Error update answer due to ${reason}`);
+            });
             if (peerRef.current[id]) {
               deletePeerForUser(id);
             }
-            if (uans?.status===200){
-              console.log("answer update sucess")
+            if (uans?.status === 200) {
+              console.log("answer update sucess");
             }
             if (rnd?.status === 200) {
               let hb = await heartbeat({
@@ -332,7 +337,9 @@ const AdminPanel = () => {
         "updating user wiht active peer:::",
         peerRef.current[selectedUserId]
       );
-      const offer = await peerRef.current[selectedUserId].createOffer();
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false   });
+      const offer = await peerRef.current[selectedUserId].createOffer([],stream);
       const iceCandidates = peerRef.current[selectedUserId].iceCandidates;
 
       if (offer && iceCandidates.length > 0) {
@@ -351,18 +358,21 @@ const AdminPanel = () => {
               toast.error(`Error add data to db due to\n\n${reason}`)
             );
             if (rnd?.status === 200) {
-              let hb = await heartbeat({
-                client_id: selectedUserId,
-                status: peerStatus[selectedUserId]?.peerConnectionState,
-              });
-              if (hb.status === 200) {
-                console.log("Heart beat update sucess");
-              } else {
-                console.error(
-                  "Fail to update heartbeat due to ",
-                  hb.data.details
-                );
+              if (selectedUserId) {
+                let hb = await heartbeat({
+                  client_id: selectedUserId,
+                  status: peerStatus[selectedUserId]?.peerConnectionState,
+                });
+                if (hb.status === 200) {
+                  console.log("Heart beat update sucess");
+                } else {
+                  console.error(
+                    "Fail to update heartbeat due to ",
+                    hb.data.details
+                  );
+                }
               }
+
               toast.success("Update signal data to db");
             }
           } catch (err) {
@@ -385,56 +395,57 @@ const AdminPanel = () => {
   useEffect(() => {
     const interval = setInterval(() => {
       showStatusOfPeerAll();
-      refresh_client()
-    }, 3000);  
+    }, 3000);
 
     return () => clearInterval(interval); // cleanup on unmount
   }, []);
 
-let handle_answer = async (id, details) => {
-  refresh_client();
+  let handle_answer = async (id, details) => {
+    refresh_client();
 
-  if (peerRef.current[id]) {
-    try {
-      // 1. Set the remote answer SDP
-      await peerRef.current[id].setRemoteDescription({
-        type: "answer",
-        sdp: details.answer_sdp,
-      });
+    if (peerRef.current[id]) {
+      try {
+        // 1. Set the remote answer SDP
+        await peerRef.current[id].setRemoteDescription({
+          type: "answer",
+          sdp: details.answer_sdp,
+        });
 
-      // 2. Add ICE candidates (if any)
-      if (details.answer_ice) {
-        for (const ice of details.answer_ice) {
-          try {
-            await peerRef.current[id].addIceCandidate(ice);
-          } catch (err) {
-            console.error("Failed to add ICE candidate", err);
+        // 2. Add ICE candidates (if any)
+        if (details.answer_ice) {
+          for (const ice of details.answer_ice) {
+            try {
+              await peerRef.current[id].addIceCandidate(ice);
+            } catch (err) {
+              console.error("Failed to add ICE candidate", err);
+            }
           }
         }
+
+        console.log("Answer successfully applied for", id);
+      } catch (err) {
+        console.error("Error handling answer:", err);
       }
-
-      console.log("Answer successfully applied for", id);
-    } catch (err) {
-      console.error("Error handling answer:", err);
+    } else {
+      toast.error(`Can't call peer, not available for user ${id}`);
     }
-  } else {
-    toast.error(`Can't call peer, not available for user ${id}`);
-  }
-};
+  };
 
-let hangup_call=(ids)=>{
-if(peerRef.current[ids]){
-    console.log("hangup call for:::",ids)
-    if(peerStatus[ids].peerConnectionState==="connected"){
-       deletePeerForUser(ids)
+  let hangup_call = (ids) => {
+    if (peerRef.current[ids]) {
+      console.log("hangup call for:::", ids);
+      if (peerStatus[ids].peerConnectionState === "connected") {
+        deletePeerForUser(ids);
+        refresh_client();
+      }
+      toast.success(`Call hangup for ${ids}`);
+    } else {
+      toast.error("Cant hangup call for this peer not exist");
     }
-    toast.success(`Call hangup for ${ids}`)
-}else{
-  toast.error("Cant hangup call for this peer not exist")
-}
-}
+  };
   // ------------Update Logic End----------------
 
+  console.log(selectedUserId)
   //----------------Business logic End----------------
 
   //----------------Main Code Start----------------
@@ -455,6 +466,7 @@ if(peerRef.current[ids]){
             </button>
 
             <button
+              disabled={updatingUsers[selectedUserId]}
               className="btn btn-circle btn-primary"
               title="Remove all Signal data from database"
               onClick={() => {
@@ -467,7 +479,11 @@ if(peerRef.current[ids]){
         </div>
 
         <ClientTable
-          hangup_call={(id)=>{hangup_call(id)}}
+          Ccid={setSelectUserId}
+          audio_modal={Samo}
+          hangup_call={(id) => {
+            hangup_call(id);
+          }}
           all_status={peerStatus}
           clients={clients}
           peerRef={peerRef}
@@ -492,9 +508,9 @@ if(peerRef.current[ids]){
             setSelectUserId(id);
             await update_data();
           }}
-          onCall={(id,details) => {
-            setSelectedUserData(details)
-           handle_answer(id,details)
+          onCall={(id, details) => {
+            setSelectedUserData(details);
+            handle_answer(id, details);
             // handle_answer(id)
           }}
         />
@@ -522,6 +538,18 @@ if(peerRef.current[ids]){
         onClose={() => {
           setShowViewModal(false);
           setSelectedUserData({});
+        }}
+      />
+
+      <AudioModal
+        hangup_call={() => {
+          hangup_call(selectedUserId);
+        }}
+        peer={peerRef.current[selectedUserId]}
+        isOpen={amo}
+        onClose={() => {
+          setSelectUserId("")
+          Samo(false);
         }}
       />
     </>

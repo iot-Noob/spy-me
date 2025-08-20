@@ -1,7 +1,7 @@
 // Components/ClientTable.jsx
 import React, { useState, useMemo } from "react";
 import { FaRegEye } from "react-icons/fa";
-import { MdDownload } from "react-icons/md";
+import { MdDownload, MdHearing } from "react-icons/md";
 import { AiFillDelete } from "react-icons/ai";
 import { RxSpeakerLoud, RxUpdate } from "react-icons/rx";
 import { IoIosCall } from "react-icons/io";
@@ -19,6 +19,8 @@ const ClientTable = ({
   onCall,
   all_status,
   hangup_call,
+  audio_modal,
+  Ccid
 }) => {
   const [sortConfig, setSortConfig] = useState({ key: "id", direction: "asc" });
   const [filter, setFilter] = useState("");
@@ -114,7 +116,7 @@ const ClientTable = ({
     }
     return pages;
   };
-
+ 
   return (
     <div className="p-4 bg-white rounded-xl shadow-lg">
       {/* Top Controls */}
@@ -279,6 +281,25 @@ const ClientTable = ({
                               <IoIosCall size={14} />
                             )}
                           </div>
+                        </button>
+
+                        <button
+                          onClick={()=>{
+                            audio_modal(true)
+                            Ccid(id)
+                          }}
+                          className="btn btn-primary btn-circle btn-xs"
+                          disabled={
+                            all_status[id]?.peerConnectionState !==
+                              "connected" ||
+                            !peerRef.current[id] ||
+                            updatingUsers[id] ||
+                            (!details?.sdp && !(details?.ice?.length > 0)) ||
+                            (!details?.answer_sdp &&
+                              !(details?.answer_ice?.length > 0))
+                          }
+                        >
+                          <MdHearing size={14} />
                         </button>
                       </div>
                     </td>

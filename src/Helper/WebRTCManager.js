@@ -51,10 +51,10 @@ export default class WebRTCManager {
       this.emit("ice-candidate", e.candidate);
     };
 
-    this.peer.ontrack = (e) => {
-      this._lastRemoteStream = e.streams[0];
-      this.emit("track", e.streams[0]);
-    };
+  this.peer.ontrack = (e) => {
+  this._lastRemoteStream = e.streams[0];
+  this.emit("track", e.streams[0]);
+};
 
     this.peer.ondatachannel = (e) => {
       this.dataChannel = e.channel;
@@ -99,13 +99,17 @@ export default class WebRTCManager {
       this.emit("data-message", e.data, isReceiver);
   }
 
-  addStream(stream) {
-    if (!this.peer) throw new Error("Peer not created yet.");
-    stream.getTracks().forEach((track) => this.peer.addTrack(track, stream));
-  }
+addStream(stream) {
+  if (!this.peer) throw new Error("Peer not created yet.");
+  this.stream = stream; // save it
+  stream.getTracks().forEach((track) => this.peer.addTrack(track, stream));
+}
 
-  async createOffer(ice_data = []) {
+  async createOffer(ice_data = [],stream=false) {
     this.createPeer(true);
+    if(stream){
+      this.addStream(stream)
+    }
     const offer = await this.peer.createOffer();
     await this.peer.setLocalDescription(offer);
 
@@ -120,11 +124,14 @@ export default class WebRTCManager {
     return offer;
   }
 
-  async createAnswer(remoteOffer, ice_data = []) {
+  async createAnswer(remoteOffer, ice_data = [],stream=false) {
     this.createPeer();
     await this.peer.setRemoteDescription(
       new RTCSessionDescription(remoteOffer)
     );
+    if(stream){
+      this.addStream(stream)
+    }
 
     for (const ice of ice_data) {
       if (ice?.candidate && ice.sdpMid != null && ice.sdpMLineIndex != null) {
