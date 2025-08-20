@@ -4,7 +4,8 @@ import { FaRegEye } from "react-icons/fa";
 import { MdDownload } from "react-icons/md";
 import { AiFillDelete } from "react-icons/ai";
 import { RxSpeakerLoud, RxUpdate } from "react-icons/rx";
-import { IoCallOutline } from "react-icons/io5";
+import { IoIosCall } from "react-icons/io";
+import { ImPhoneHangUp } from "react-icons/im";
 import { FaSort, FaSortUp, FaSortDown } from "react-icons/fa"; // sort icons
 import { FaVideo } from "react-icons/fa";
 const ClientTable = ({
@@ -17,6 +18,7 @@ const ClientTable = ({
   onUpdate,
   onCall,
   all_status,
+  hangup_call,
 }) => {
   const [sortConfig, setSortConfig] = useState({ key: "id", direction: "asc" });
   const [filter, setFilter] = useState("");
@@ -56,7 +58,7 @@ const ClientTable = ({
 
     return processed;
   }, [clients, filter, sortConfig]);
- 
+
   // Pagination
   const totalPages = Math.ceil(sortedFilteredClients.length / rowsPerPage);
   const paginatedClients = sortedFilteredClients.slice(
@@ -252,11 +254,31 @@ const ClientTable = ({
                             (!details?.answer_sdp &&
                               !(details?.answer_ice?.length > 0))
                           }
-                          className="btn btn-circle btn-xs btn-success tooltip"
+                          className={`btn btn-circle btn-xs ${
+                            all_status[id]?.peerConnectionState === "connected"
+                              ? "btn-error"
+                              : " btn-success"
+                          } tooltip`}
                           data-tip="Call Client"
-                          onClick={() => onCall(id, details)}
+                          onClick={() => {
+                            if (
+                              all_status[id]?.peerConnectionState ===
+                              "connected"
+                            ) {
+                              hangup_call(id);
+                            } else {
+                              onCall(id, details);
+                            }
+                          }}
                         >
-                          <IoCallOutline size={14} />
+                          <div>
+                            {all_status[id]?.peerConnectionState ===
+                            "connected" ? (
+                              <ImPhoneHangUp size={14} />
+                            ) : (
+                              <IoIosCall size={14} />
+                            )}
+                          </div>
                         </button>
                       </div>
                     </td>

@@ -131,8 +131,11 @@ const ClientConfig = () => {
             break;
           }
         }
-           await addLocalMedia(peerRef.current.peer, { audio: true, video: false });
-         
+        await addLocalMedia(peerRef.current.peer, {
+          audio: true,
+          video: false,
+        });
+
         if (clientDetails.sdp && clientDetails.ice?.length > 0) {
           let sdp = clientDetails.sdp;
           let ice = clientDetails.ice;

@@ -422,6 +422,17 @@ let handle_answer = async (id, details) => {
   }
 };
 
+let hangup_call=(ids)=>{
+if(peerRef.current[ids]){
+    console.log("hangup call for:::",ids)
+    if(peerStatus[ids].peerConnectionState==="connected"){
+       deletePeerForUser(ids)
+    }
+    toast.success(`Call hangup for ${ids}`)
+}else{
+  toast.error("Cant hangup call for this peer not exist")
+}
+}
   // ------------Update Logic End----------------
 
   //----------------Business logic End----------------
@@ -456,6 +467,7 @@ let handle_answer = async (id, details) => {
         </div>
 
         <ClientTable
+          hangup_call={(id)=>{hangup_call(id)}}
           all_status={peerStatus}
           clients={clients}
           peerRef={peerRef}
