@@ -55,11 +55,7 @@ export const registerSDP = async (payload) => {
   return res.data;
 };
 
-export const registerAnswer = async (payload) => {
-  const res = await api.post("/register_answer", payload);
-  toast.success("Answer registered successfully");
-  return res.data;
-};
+ 
 
 export const getClients = async (id = null) => {
   const res = await api.get("/get_clients", {
@@ -68,18 +64,9 @@ export const getClients = async (id = null) => {
   return res.data;
 };
 
-export const updateSDP = async (payload) => {
-  const res = await api.put("/update_sdp", payload);
-  toast.success("SDP updated successfully");
-  return res.data;
-};
+ 
 
-export const updateAnswer = async (payload) => {
-  const res = await api.put("/update_answer", payload);
-  toast.success("Answer updated successfully");
-  return res.data;
-};
-
+ 
 export const deleteClient = async (clientId) => {
   const res = await api.delete(`/delete_client/${clientId}`);
   toast.success("Client deleted successfully");

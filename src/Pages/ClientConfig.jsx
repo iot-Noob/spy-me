@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { notifyUser } from "../Helper/WindowsNotification";
 import WebRTCManager from "../Helper/WebRTCManager";
 import { toast } from "react-toastify";
-import { getClients, updateAnswer } from "../Helper/Requests";
-
+import { getClients } from "../Helper/Requests";
+import WebSocketManager from "../Helper/WebSocketManager";
 const ClientConfig = () => {
   const [clients, setClients] = useState([]);
   const [selectedClient, setSelectedClient] = useState(
@@ -15,7 +15,11 @@ const ClientConfig = () => {
   const lastSdpRef = useRef(null);
   const creatingPeerRef = useRef(false); // <-- prevent duplicate peers
   const autoAnsweringRef = useRef(false); // <-- prevent duplicate answers
-
+  let webSockRef = useRef({});
+  let Wsm = useRef({});
+  let ccRef = useRef([]);
+  const [offerReceived, setOfferReceived] = useState(false);
+  let WebsockURL = import.meta.env.VITE_SOCKER_URL;
   const createPeerForUser = () => {
     if (creatingPeerRef.current) return;
     creatingPeerRef.current = true;
@@ -48,6 +52,34 @@ const ClientConfig = () => {
     }
     return false;
   };
+  // ---------- Handle incoming WebSocket offers ----------
+const handleIncomingOffer = useCallback(
+  async (msg) => {
+    if (!msg?.type || msg.type !== "offer" || !msg.sdp) return;
+
+    console.log("Incoming offer received:", msg);
+
+    // Skip duplicate SDP
+    if (autoAnsweringRef.current && lastSdpRef.current === msg.sdp) return;
+
+    // store offer in state
+    Scd({ sdp: msg.sdp, ice: msg.ice, ...msg });
+    setOfferReceived(true);
+
+    // ensure peer exists
+    if (!peerRef.current) {
+      createPeerForUser();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    // Auto-answer
+    await handleAutoAnswer({ sdp: msg.sdp, ice: msg.ice });
+
+    // mark SDP as answered
+    lastSdpRef.current = msg.sdp;
+  },
+  [selectedClient]
+);
 
   const showStatusForPeer = () => {
     if (!peerRef.current) return;
@@ -71,7 +103,6 @@ const ClientConfig = () => {
 
       const clientObj = temp.find((c) => Object.keys(c)[0] === selectedClient);
       if (!clientObj) {
-        // client removed
         toast.warn("Selected client removed.");
         setSelectedClient("");
         Scd(null);
@@ -86,12 +117,19 @@ const ClientConfig = () => {
 
       const badStates = ["new", "disconnected", "failed", "closed", undefined];
 
-      // create peer only if needed
-      if (
-        (!peerRef.current || badStates.includes(localState) || serverState === "disconnected" || serverState === "failed") &&
-        !creatingPeerRef.current
-      ) {
+      // ✅ Only create peer if none exists or previous one fully failed
+      if (!peerRef.current) {
         createPeerForUser();
+      } else if (
+        peerRef.current &&
+        !["connected", "connecting"].includes(localState)
+      ) {
+        if (
+          !creatingPeerRef.current &&
+          (serverState === "disconnected" || serverState === "failed")
+        ) {
+          createPeerForUser();
+        }
       }
 
       // auto-answer
@@ -113,6 +151,62 @@ const ClientConfig = () => {
   };
 
   useEffect(() => {
+    ccRef.current = clients;
+  }, [clients]);
+
+  //------------WebSock Manager------------
+
+  let webSockAutoManager = () => {
+    const Clients = ccRef.current;
+    const existingClientIds = Clients.map((c) => Object.keys(c)[0]);
+
+    // Clean up WebSockets for clients that no longer exist
+    Object.keys(webSockRef.current).forEach((id) => {
+      if (!existingClientIds.includes(id)) {
+        console.log("Destroying WebSocket for removed client:", id);
+        webSockRef.current[id]?.disconnect?.();
+        delete webSockRef.current[id];
+        delete Wsm.current[id];
+      }
+    });
+
+    if (!Array.isArray(Clients) || Clients.length === 0) {
+      console.log("No clients found");
+      return;
+    }
+
+    // Auto-connect logic for existing clients
+    for (let c of Clients) {
+      const id = Object.keys(c)[0];
+      if (id === selectedClient) {
+        if (!webSockRef.current[id]) {
+          webSockRef.current[id] = new WebSocketManager(`${WebsockURL}/${id}`, {
+            id,
+            onOpen: () => console.log("Connected:", id),
+            onClose: () => console.log("Closed:", id),
+            onMessage: (msg) => {
+              if (!msg)
+                return console.warn("Received undefined message for", id);
+              Wsm.current[id] = msg;
+              console.log("Stored message for", id, msg);
+
+              // NEW: Handle offer messages
+              handleIncomingOffer(msg);
+            },
+          });
+        } else if (!webSockRef.current[id]?.isConnected) {
+          // Reconnect if existing but closed
+          console.log("Reconnecting socket for", id);
+          webSockRef.current[id]?.disconnect?.();
+          webSockRef.current[id]?.connect?.();
+        }
+      }
+    }
+  };
+
+  //------------WebSock Manager End------------
+
+  useEffect(() => {
     fetch_clients();
   }, []);
 
@@ -126,44 +220,56 @@ const ClientConfig = () => {
     return () => clearInterval(interval);
   }, [selectedClient, peerStatus]);
 
-  const handleAutoAnswer = async (clientDetails) => {
-    if (!peerRef.current || autoAnsweringRef.current) return;
+  useEffect(() => {
+    let tot = setInterval(() => {
+      webSockAutoManager();
+    }, 2000);
+    return () => clearInterval(tot);
+  }, []);
+const handleAutoAnswer = async (clientDetails) => {
+  if (!clientDetails?.sdp) return;
 
-    autoAnsweringRef.current = true;
+  // ensure peer exists
+  if (!peerRef.current) {
+    createPeerForUser();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
 
-    try {
-      const localStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: false,
-      });
+  // block duplicate offers only if SDP unchanged
+  if (autoAnsweringRef.current && lastSdpRef.current === clientDetails.sdp) return;
 
-      const ans = await peerRef.current.createAnswer(
-        { type: "offer", sdp: clientDetails.sdp },
-        clientDetails.ice,
-        localStream
-      );
+  autoAnsweringRef.current = true;
 
-      const aid = peerRef.current.iceCandidates;
-      const res = await updateAnswer({
-        client_id: selectedClient,
+  try {
+    const localStream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: false,
+    });
+
+    const ans = await peerRef.current.createAnswer(
+      { type: "offer", sdp: clientDetails.sdp },
+      clientDetails.ice,
+      localStream
+    );
+
+    if (webSockRef.current[selectedClient]) {
+      webSockRef.current[selectedClient].send({
+        type: "answer",
         answer_sdp: ans.sdp,
-        ice: aid,
+        ice: Array.isArray(ans.aid) ? ans.aid : [],
       });
 
-      if (res.status === 200) {
-        notifyUser(
-          "Auto Answer",
-          `Connected to ${selectedClient}`,
-          "/server.png"
-        );
-        toast.success(`Connected to ${selectedClient}`);
-      }
-    } catch (err) {
-      console.error("Error auto-answering:", err);
-    } finally {
-      autoAnsweringRef.current = false;
+      // trigger server to return answer back
+      webSockRef.current[selectedClient].send({ type: "sasr" });
     }
-  };
+  } catch (err) {
+    console.error("Error auto-answering:", err);
+  } finally {
+    autoAnsweringRef.current = false;
+    lastSdpRef.current = clientDetails.sdp; // mark as answered
+  }
+};
+
 
   //---------------- UI ----------------
   if (selectedClient) return null;

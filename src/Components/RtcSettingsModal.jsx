@@ -3,7 +3,7 @@ import { toast } from "react-toastify";
 import { IoIosCloseCircle } from "react-icons/io";
 import { registerSDP } from "../Helper/Requests";
 import { asyncNotifyUser } from "../Helper/WindowsNotification";
-const RtcSettingsModal = ({ dialogRef ,rfrsh}) => {
+const RtcSettingsModal = ({ dialogRef, rfrsh }) => {
   const [userId, setUserId] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
@@ -25,13 +25,17 @@ const RtcSettingsModal = ({ dialogRef ,rfrsh}) => {
 
     try {
       const res = await registerSDP({
-        client_id: trimmedId,
+        title: trimmedId,
         sdp: "",
         ice: [],
       });
-      
+        
       if (res?.status === 200) {
-       await  asyncNotifyUser(`Sucessfully register new user ${trimmedId}`,`User Registration Sucessful ${trimmedId}`,'/server.png')
+        await asyncNotifyUser(
+          `Sucessfully register new user ${trimmedId}`,
+          `User Registration Sucessful ${trimmedId}`,
+          "/server.png"
+        );
         toast.success("User registered successfully");
         dialogRef.current?.close();
         setUserId("");
@@ -41,7 +45,7 @@ const RtcSettingsModal = ({ dialogRef ,rfrsh}) => {
         `Error occurred while registering user: ${err.message || err}`
       );
     } finally {
-      rfrsh()
+      rfrsh();
       handleClose();
       setUserId("");
     }
@@ -67,14 +71,14 @@ const RtcSettingsModal = ({ dialogRef ,rfrsh}) => {
 
         <div className="form-control w-full mb-4">
           <label className="label" htmlFor="userId">
-            <span className="label-text font-semibold">User ID</span>
+            <span className="label-text font-semibold">User Title</span>
           </label>
           <input
             id="userId"
             type="text"
             value={userId}
             maxLength={20}
-            placeholder="Enter user ID"
+            placeholder="Enter Title"
             onChange={handleChange}
             className={`input input-bordered w-full ${
               submitted && !userId.trim() ? "input-error" : ""
@@ -89,7 +93,7 @@ const RtcSettingsModal = ({ dialogRef ,rfrsh}) => {
             onClick={handleSubmit}
             className="btn btn-primary w-full"
           >
-            Add Settings
+            Enter Name
           </button>
         </div>
       </form>

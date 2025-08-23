@@ -5,14 +5,7 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { IoIosAddCircle } from "react-icons/io";
 import RtcSettingsModal from "../Components/RtcSettingsModal";
-import {
-  getClients,
-  deleteClient,
-  registerSDP,
-  heartbeat,
-  updateSDP,
-  updateAnswer,
-} from "../Helper/Requests";
+import { getClients, deleteClient, registerSDP } from "../Helper/Requests";
 import CustModal from "../Components/CustModal";
 import ActionModal from "../Components/ActionModal";
 import { toast } from "react-toastify";
@@ -22,7 +15,9 @@ import { TbDatabaseMinus } from "react-icons/tb";
 import { notifyUser } from "../Helper/WindowsNotification";
 import ClientTable from "../Components/ClientTable";
 import AudioModal from "../Components/AudioModal";
-
+import useWebSocketClient from "../Components/useWebsocketClient";
+import { connect } from "react-redux";
+import WebSocketManager from "../Helper/WebSocketManager";
 /*
 ----------------Imports end----------------
 */
@@ -30,6 +25,7 @@ const AdminPanel = () => {
   /*
 ----------------State manager start----------------
 */
+  let WebsockURL = import.meta.env.VITE_SOCKER_URL;
   const [clients, setClients] = useState([]);
   let rtcSettingsModalToggler = useRef(false);
   const [refresh, setRefresh] = useState(false);
@@ -42,13 +38,88 @@ const AdminPanel = () => {
   let [updatingUsers, setUpdatingUsers] = useState({});
   let [userSDP, setUserSDP] = useState({});
   let [peerStatus, setPeerStatus] = useState({});
+  let [wsStatus, setWsStatus] = useState({});
   const prevStatusRef = useRef({});
+  const prevWsRef = useRef({});
+  const webSockRef = useRef({});
+  const clientsRef = useRef([]);
   let [amo, Samo] = useState(false);
+  let Wsm = useRef({});
+
   /*
 ----------------State manager End----------------
 */
 
   //----------------Business logic start----------------
+
+  //----------------Websocket manager start----------------
+
+  //----------------WS for eeach user Handler start----------------
+
+  let get_ws_status_eu = () => {
+    try {
+      const currentClients = clientsRef.current;
+
+      if (!Array.isArray(currentClients) || currentClients.length === 0) {
+        console.log("no clients found");
+
+        // Close & clear all sockets if no clients
+        Object.values(webSockRef.current).forEach((ws) => ws.disconnect?.());
+        webSockRef.current = {};
+        return; // stop here
+      }
+
+      // Collect active client IDs
+      const activeIds = new Set(
+        currentClients.map((v) => String(Object.keys(v)[0]))
+      );
+
+      // Create or reconnect sockets for active clients
+      currentClients.forEach((v) => {
+        let cid = String(Object.keys(v)[0]);
+        console.log("Client ID:", cid);
+
+        if (!webSockRef.current[cid]) {
+          // New socket
+          webSockRef.current[cid] = new WebSocketManager(
+            `${WebsockURL}/${cid}`,
+            {
+              id: cid,
+              onOpen: () => console.log("Connected:", cid),
+              onClose: () => console.log("Closed:", cid),
+              onMessage: (msg) => {
+                if (!msg)
+                  return console.warn("Received undefined message for", cid);
+                Wsm.current[cid] = msg;
+                refresh_client()
+                console.log("Stored message for", cid, msg);
+              },
+            }
+          );
+        } else if (!webSockRef.current[cid]?.isConnected) {
+          // Reconnect if existing but closed
+          console.log("Reconnecting socket for", cid);
+          webSockRef.current[cid]?.disconnect?.();
+          webSockRef.current[cid]?.connect?.();
+        }
+      });
+
+      // Cleanup: remove sockets that are no longer active
+      Object.keys(webSockRef.current).forEach((idStr) => {
+        if (!activeIds.has(idStr)) {
+          console.log("Removing stale socket for", idStr);
+          webSockRef.current[idStr].disconnect?.();
+          delete webSockRef.current[idStr];
+        }
+      });
+    } catch (err) {
+      toast.error(`Error get websock status due to ${err}`);
+    }
+  };
+
+  //----------------WS for eeach user Handler End----------------
+
+  //----------------Websocket manager  end----------------
 
   //----------------Peer Handler start----------------
 
@@ -152,11 +223,11 @@ const AdminPanel = () => {
           // 🔥 Only send heartbeat if state changed
           try {
             if (uid) {
-              refresh_client()
-              await heartbeat({
-                client_id: uid,
-                status: peerState,
-              });
+              refresh_client();
+              let ws=webSockRef.current[selectedUserId]
+               ws.send({
+                      type:"hbeat"
+                    })
             }
             console.log(`Heartbeat sent for ${uid}: ${peerState}`);
           } catch (err) {
@@ -187,48 +258,41 @@ const AdminPanel = () => {
           (client.answer_sdp && client.answer_ice.length > 0)
         ) {
           try {
-            let rnd = await updateSDP({
-              client_id: id,
-              sdp: "",
-              ice: [],
-            }).catch((reason) =>
-              toast.error(`Error nullify data for ${id} due to\n\n${reason}`)
-            );
-            let uans = await updateAnswer({
-              client_id: id,
-              answer_sdp: "",
-              ice: [],
-            }).catch((reason) => {
-              toast.error(`Error update answer due to ${reason}`);
-            });
+                       if (webSockRef.current[selectedUserId]) {
+              const ws = webSockRef.current[selectedUserId];
+
+              if (ws.isConnected) {
+                ws.send({
+                  type: "offer",
+                  ice: [],
+                  sdp:"",
+                });
+                   ws.send({
+                  type: "answer",
+                  ice: [],
+                  answer_sdp:"",
+                });
+                let msgs = Wsm.current[selectedUserId];
+            
+                let mk=Object.keys(msgs)[0]
+                  if(mk==="sucess"){
+                    refresh_client()
+                    ws.send({
+                      "type":"hbeat"
+                    })
+                    
+                    toast.success(msgs[mk])
+                  }
+                     if(mk==="error"){
+                  
+                    toast.success(msgs[mk])
+                  }
+              }
+            }
             if (peerRef.current[id]) {
               deletePeerForUser(id);
             }
-            if (uans?.status === 200) {
-              console.log("answer update sucess");
-            }
-            if (rnd?.status === 200) {
-              let hb = await heartbeat({
-                client_id: id,
-                status: "disconnected",
-              });
-
-              if (hb?.status === 200) {
-                console.log("Heartbeat update success for", id);
-              } else {
-                console.error(
-                  "Fail to update heartbeat for",
-                  id,
-                  hb?.data?.details
-                );
-              }
-              notifyUser(
-                "Clean Peer singal data from db",
-                `user ${id} signal data clean`,
-                "/server.png"
-              );
-              toast.success(`Cleared signal data for client ${id}`);
-            }
+            refresh_client()
           } catch (err) {
             toast.error(`Error cleaning client ${id} due to ${err}`);
           }
@@ -258,11 +322,10 @@ const AdminPanel = () => {
     setRefresh((prev) => !prev);
   };
 
-useEffect(() => {
-  fetch_clients();
-}, [refresh,selectedUserData[selectedUserId]?.answer_sdp]);
+  useEffect(() => {
+    fetch_clients();
+  }, [refresh, selectedUserData[selectedUserId]?.answer_sdp]);
 
-  
   //----------------Handle delete users function logic----------------
   let select_delete_users = (id) => {
     if (!id) {
@@ -313,6 +376,9 @@ useEffect(() => {
   // cleanup all peers on unmount
   useEffect(() => {
     return () => {
+      `    // if (isConnected) {
+      //   disconnect();
+      // }`;
       Object.keys(peerRef.current).forEach((uid) => {
         console.log(`Disconnecting peer for ${uid}...`);
         peerRef.current[uid].close();
@@ -328,9 +394,16 @@ useEffect(() => {
   // ------------Update Logic start----------------
 
   let update_data = async () => {
-    if (!peerRef.current[selectedUserId]) {
+    const existingPeer = peerRef.current[selectedUserId];
+    if (
+      !existingPeer ||
+      existingPeer.getStatus()?.peerConnectionState === "closed" ||
+      existingPeer.getStatus()?.peerConnectionState === "failed"
+    ) {
       createPeerForUser(selectedUserId);
       showPeerForUser();
+    } else {
+      console.log(`✅ Reusing existing peer for ${selectedUserId}`);
     }
 
     setUpdatingUsers((prev) => ({ ...prev, [selectedUserId]: true }));
@@ -340,8 +413,14 @@ useEffect(() => {
         peerRef.current[selectedUserId]
       );
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false   });
-      const offer = await peerRef.current[selectedUserId].createOffer([],stream);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: false,
+      });
+      const offer = await peerRef.current[selectedUserId].createOffer(
+        [],
+        stream
+      );
       const iceCandidates = peerRef.current[selectedUserId].iceCandidates;
 
       if (offer && iceCandidates.length > 0) {
@@ -352,31 +431,33 @@ useEffect(() => {
         setUserSDP((prev) => ({ ...prev, [selectedUserId]: offer.sdp }));
         if (selectedUserId) {
           try {
-            let rnd = await updateSDP({
-              client_id: selectedUserId,
-              sdp: offer.sdp,
-              ice: iceCandidates,
-            }).catch((reason) =>
-              toast.error(`Error add data to db due to\n\n${reason}`)
-            );
-            if (rnd?.status === 200) {
-              if (selectedUserId) {
-                let hb = await heartbeat({
-                  client_id: selectedUserId,
-                  status: peerStatus[selectedUserId]?.peerConnectionState,
+              if (webSockRef.current[selectedUserId]) {
+              const ws = webSockRef.current[selectedUserId];
+
+              if (ws.isConnected) {
+                ws.send({
+                  type: "offer",
+                  ice: iceCandidates,
+                  sdp: offer.sdp,
                 });
-                if (hb.status === 200) {
-                  console.log("Heart beat update sucess");
-                } else {
-                  console.error(
-                    "Fail to update heartbeat due to ",
-                    hb.data.details
-                  );
-                }
+                let msgs = Wsm.current[selectedUserId];
+            
+                let mk=Object.keys(msgs)[0]
+                  if(mk==="sucess"){
+                    ws.send({
+                      type:"hbeat"
+                    })
+                    ws.send({
+                      type:"sofr"
+                    })
+                    toast.success(msgs[mk])
+                  }
+                     if(mk==="error"){
+                  
+                    toast.success(msgs[mk])
+                  }
               }
-              
-              toast.success("Update signal data to db");
-            }
+            }             
           } catch (err) {
             toast.error(`Error add signal data to api due to ${err}`);
           } finally {
@@ -401,12 +482,23 @@ useEffect(() => {
 
     return () => clearInterval(interval); // cleanup on unmount
   }, []);
+  useEffect(() => {
+    let tot = setInterval(() => {
+      get_ws_status_eu();
+    }, 2000);
+    return () => clearInterval(tot);
+  }, []);
+
+  useEffect(() => {
+    clientsRef.current = clients;
+  }, [clients]);
 
   let handle_answer = async (id, details) => {
     refresh_client();
 
     if (peerRef.current[id]) {
       try {
+          console.log(Wsm.current[id])
         // 1. Set the remote answer SDP
         await peerRef.current[id].setRemoteDescription({
           type: "answer",
@@ -423,12 +515,12 @@ useEffect(() => {
             }
           }
         }
-     
+
         console.log("Answer successfully applied for", id);
       } catch (err) {
         console.error("Error handling answer:", err);
-      }finally{
-        refresh_client()
+      } finally {
+        refresh_client();
       }
     } else {
       toast.error(`Can't call peer, not available for user ${id}`);
@@ -528,7 +620,7 @@ useEffect(() => {
           setSelectUserId("");
         }}
         message={"Are you sure you want to delete this user"}
-        title={`Delete user ${selectedUserId}`}
+        title={`Delete user ${selectedUserData[selectedUserId]?.title}`}
       />
       <RtcSettingsModal
         dialogRef={rtcSettingsModalToggler}
@@ -551,7 +643,7 @@ useEffect(() => {
         peer={peerRef.current[selectedUserId]}
         isOpen={amo}
         onClose={() => {
-          setSelectUserId("")
+          setSelectUserId("");
           Samo(false);
         }}
       />

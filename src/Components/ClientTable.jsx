@@ -20,7 +20,7 @@ const ClientTable = ({
   all_status,
   hangup_call,
   audio_modal,
-  Ccid
+  Ccid,
 }) => {
   const [sortConfig, setSortConfig] = useState({ key: "id", direction: "asc" });
   const [filter, setFilter] = useState("");
@@ -116,7 +116,7 @@ const ClientTable = ({
     }
     return pages;
   };
- 
+
   return (
     <div className="p-4 bg-white rounded-xl shadow-lg">
       {/* Top Controls */}
@@ -153,7 +153,7 @@ const ClientTable = ({
           <thead className="bg-gray-100 text-gray-700">
             <tr>
               <th onClick={() => requestSort("id")} className="cursor-pointer">
-                ID {getSortIcon("id")}
+                Title {getSortIcon("id")}
               </th>
               <th
                 onClick={() => requestSort("status")}
@@ -188,7 +188,7 @@ const ClientTable = ({
                     key={idx}
                     className="hover:bg-gray-50 transition-colors duration-150"
                   >
-                    <td className="font-mono text-sm">{id}</td>
+                    <td className="font-mono text-sm">{details.title}</td>
                     <td>
                       <div className="grid grid-cols-3 gap-1">
                         <div>
@@ -284,9 +284,9 @@ const ClientTable = ({
                         </button>
 
                         <button
-                          onClick={()=>{
-                            audio_modal(true)
-                            Ccid(id)
+                          onClick={() => {
+                            audio_modal(true);
+                            Ccid(id);
                           }}
                           className="btn btn-primary btn-circle btn-xs"
                           disabled={
