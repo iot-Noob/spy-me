@@ -3,18 +3,19 @@ import { notifyUser } from "../Helper/WindowsNotification";
 import WebRTCManager from "../Helper/WebRTCManager";
 import { toast } from "react-toastify";
 import { getClients, updateAnswer } from "../Helper/Requests";
+let  baseURL=import.meta.env.VITE_API_URL
 
 const ClientConfig = () => {
   const [clients, setClients] = useState([]);
   const [selectedClient, setSelectedClient] = useState(
     localStorage.getItem("selectedClientId") || ""
   );
+  const [activeClientId, setActiveClientId] = useState(null); // <-- active peer
   const [cd, Scd] = useState();
-  const [peerStatus, setPeerStatus] = useState();
   const peerRef = useRef(null);
   const lastSdpRef = useRef(null);
-  const creatingPeerRef = useRef(false); // <-- prevent duplicate peers
-  const autoAnsweringRef = useRef(false); // <-- prevent duplicate answers
+  const creatingPeerRef = useRef(false);
+  const autoAnsweringRef = useRef(false);
 
   const createPeerForUser = () => {
     if (creatingPeerRef.current) return;
@@ -49,17 +50,7 @@ const ClientConfig = () => {
     return false;
   };
 
-  const showStatusForPeer = () => {
-    if (!peerRef.current) return;
-    try {
-      const status = peerRef.current.getStatus();
-      setPeerStatus(status);
-    } catch (err) {
-      console.error("Error getting peer status:", err);
-    }
-  };
-
-  const fetch_clients = async () => {
+  const fetchClients = async () => {
     try {
       const clientList = await getClients();
       const temp = await Promise.all(
@@ -76,25 +67,21 @@ const ClientConfig = () => {
         setSelectedClient("");
         Scd(null);
         deletePeerForUser();
+        setActiveClientId(null);
         localStorage.removeItem("selectedClientId");
         return;
       }
 
       const clientData = clientObj[selectedClient];
-      const localState = peerStatus?.peerConnectionState;
-      const serverState = clientData?.status;
 
-      const badStates = ["new", "disconnected", "failed", "closed", undefined];
-
-      // create peer only if needed
-      if (
-        (!peerRef.current || badStates.includes(localState) || serverState === "disconnected" || serverState === "failed") &&
-        !creatingPeerRef.current
-      ) {
+      // Create peer only if activeClientId is different
+      if (activeClientId !== selectedClient) {
         createPeerForUser();
+        setActiveClientId(selectedClient);
       }
 
-      // auto-answer
+      // Auto-answer
+      const localState = peerRef.current?.getStatus()?.peerConnectionState;
       if (
         clientData.sdp &&
         clientData.ice?.length > 0 &&
@@ -112,19 +99,18 @@ const ClientConfig = () => {
     }
   };
 
-  useEffect(() => {
-    fetch_clients();
-  }, []);
+  // useEffect(() => {
+  //   fetchClients();
+  // }, []);
 
   // Auto peer status check every 10s
   useEffect(() => {
     const interval = setInterval(() => {
-      showStatusForPeer();
-      fetch_clients();
+      fetchClients();
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [selectedClient, peerStatus]);
+  }, [selectedClient, activeClientId]);
 
   const handleAutoAnswer = async (clientDetails) => {
     if (!peerRef.current || autoAnsweringRef.current) return;
@@ -144,11 +130,11 @@ const ClientConfig = () => {
       );
 
       const aid = peerRef.current.iceCandidates;
-      const res = await updateAnswer({
-        client_id: selectedClient,
-        answer_sdp: ans.sdp,
-        ice: aid,
-      });
+   const res = await updateAnswer({
+    client_id: clientDetails.id || selectedClient,
+    answer_sdp: ans.sdp,
+    ice: aid,
+});
 
       if (res.status === 200) {
         notifyUser(
@@ -164,6 +150,32 @@ const ClientConfig = () => {
       autoAnsweringRef.current = false;
     }
   };
+useEffect(() => {
+  if (!selectedClient) return;
+
+  const evtSource = new EventSource(`${baseURL}/get_clients?id=${selectedClient}`);
+
+  evtSource.onmessage = (event) => {
+    console.log("SSE message received:", event.data); // <-- log this
+    const clientData = JSON.parse(event.data);
+    Scd(clientData);
+
+    if (!peerRef.current) createPeerForUser();
+
+    const localState = peerRef.current?.getStatus()?.peerConnectionState;
+    if (localState !== "connected" && localState !== "connecting") {
+      if (lastSdpRef.current !== clientData.sdp) {
+        console.log("New SDP detected, triggering auto-answer");
+        lastSdpRef.current = clientData.sdp;
+        handleAutoAnswer(clientData);
+      }
+    }
+  };
+
+  return () => evtSource.close();
+}, [selectedClient]);
+
+
 
   //---------------- UI ----------------
   if (selectedClient) return null;
@@ -185,7 +197,7 @@ const ClientConfig = () => {
             const clientObj = clients.find((c) => Object.keys(c)[0] === id);
             if (clientObj) Scd(clientObj[id]);
 
-            createPeerForUser();
+            // DO NOT create peer here — handled by effect/fetch
           }}
         >
           <option value="" disabled>
